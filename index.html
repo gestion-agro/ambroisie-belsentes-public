@@ -115,6 +115,7 @@
 <div id="legend">
   <div><span class="dot" style="background:var(--amber)"></span> Signalé, en cours d'examen</div>
   <div><span class="dot" style="background:var(--line)"></span> Confirmé par la mairie</div>
+  <div><span class="dot" style="background:#1c6fd9"></span> Votre position</div>
 </div>
 
 <div id="syncBadge">Synchronisation…</div>
@@ -132,9 +133,19 @@
   <div class="sheet">
     <h3>Signaler de l'ambroisie</h3>
     <p class="hint">Merci pour votre vigilance ! Votre signalement sera transmis à la mairie.</p>
+    <div class="field" style="display:flex;gap:10px;">
+      <div style="flex:1;">
+        <label>Prénom</label>
+        <input type="text" id="reportFirstName" placeholder="Prénom">
+      </div>
+      <div style="flex:1;">
+        <label>Nom</label>
+        <input type="text" id="reportLastName" placeholder="Nom">
+      </div>
+    </div>
     <div class="field">
-      <label>Votre prénom</label>
-      <input type="text" id="reportName" placeholder="Prénom">
+      <label>Email (facultatif)</label>
+      <input type="email" id="reportEmail" placeholder="pour être informé du suivi">
     </div>
     <div class="field">
       <label>Quantité estimée</label>
@@ -162,6 +173,8 @@
   <div class="sheet">
     <h3>🌿 Merci !</h3>
     <p>Votre signalement a bien été transmis à la mairie de Belsentes. Un conseiller va l'examiner prochainement.</p>
+    <p style="font-weight:800;font-size:16px;color:var(--line);">N° de signalement : <span id="thanksRefNumber">—</span></p>
+    <p class="hint" style="margin-top:-4px;">Conservez ce numéro si vous souhaitez suivre votre signalement.</p>
     <div class="sheet-actions">
       <button class="primary" id="btnCloseThanks" style="width:100%;">Fermer</button>
     </div>
@@ -190,6 +203,48 @@
 
   var markersLayer = L.layerGroup().addTo(map);
   var reports = [];
+  var userMarker = null;
+  var accuracyCircle = null;
+  var lastFix = null;
+  var hasCenteredOnUser = false;
+
+  var userIcon = L.divIcon({
+    className: '',
+    html: '<div style="width:16px;height:16px;border-radius:50%;background:#1c6fd9;border:3px solid #fff;box-shadow:0 0 0 2px rgba(28,111,217,.4);"></div>',
+    iconSize: [16,16],
+    iconAnchor: [8,8]
+  });
+
+  function startGps(){
+    if(!('geolocation' in navigator)) return;
+    navigator.geolocation.watchPosition(function(pos){
+      var lat = pos.coords.latitude;
+      var lon = pos.coords.longitude;
+      var acc = pos.coords.accuracy;
+      lastFix = [lat, lon];
+
+      if(!userMarker){
+        userMarker = L.marker([lat, lon], { icon: userIcon, zIndexOffset: 500 }).addTo(map);
+      } else {
+        userMarker.setLatLng([lat, lon]);
+      }
+      if(!accuracyCircle){
+        accuracyCircle = L.circle([lat, lon], { radius: acc, color:'#1c6fd9', weight:1, fillOpacity:0.08 }).addTo(map);
+      } else {
+        accuracyCircle.setLatLng([lat, lon]);
+        accuracyCircle.setRadius(acc);
+      }
+
+      // Centre la carte une seule fois sur la première position obtenue,
+      // pour ne pas gêner si l'utilisateur est en train de viser un point ailleurs.
+      if(!hasCenteredOnUser){
+        map.setView([lat, lon], 15, { animate: true });
+        hasCenteredOnUser = true;
+      }
+    }, function(err){
+      console.warn('GPS indisponible', err);
+    }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
+  }
 
   function showSync(msg){
     var b = document.getElementById('syncBadge');
@@ -220,7 +275,7 @@
       if(r.status === 'rejete') return; // pas affiché publiquement
       var m = L.marker([r.lat, r.lon], { icon: reportIcon(r.status) });
       var label = r.status === 'valide' ? 'Confirmé par la mairie' : 'En cours d\'examen';
-      m.bindPopup('<b>' + escapeHtml(r.firstName || 'Anonyme') + '</b><br>' +
+      m.bindPopup('<b>' + escapeHtml(((r.firstName || '') + ' ' + (r.lastName || '')).trim() || 'Anonyme') + '</b><br>' +
         'Quantité : ' + escapeHtml(r.quantity || '—') + '<br>' +
         new Date(r.date).toLocaleDateString('fr-FR') + '<br>' +
         '<i>' + label + '</i>');
@@ -280,7 +335,9 @@
     pendingCoords = { lat: lat, lon: lon };
     selectedQty = null;
     photoDataUrl = null;
-    document.getElementById('reportName').value = '';
+    document.getElementById('reportFirstName').value = '';
+    document.getElementById('reportLastName').value = '';
+    document.getElementById('reportEmail').value = '';
     document.getElementById('reportPhoto').value = '';
     document.getElementById('photoPreview').style.display = 'none';
     document.getElementById('formErr').textContent = '';
@@ -324,16 +381,33 @@
     document.getElementById('reportModal').classList.add('hidden');
   });
 
+  // Génère un numéro de signalement lisible et unique (ex: AMB-260728-4821),
+  // pour que le citoyen puisse s'y référer sans avoir besoin d'un compte.
+  function generateRefNumber(){
+    var d = new Date();
+    var yy = String(d.getFullYear()).slice(2);
+    var mm = String(d.getMonth() + 1).padStart(2, '0');
+    var dd = String(d.getDate()).padStart(2, '0');
+    var rand = Math.floor(1000 + Math.random() * 9000);
+    return 'AMB-' + yy + mm + dd + '-' + rand;
+  }
+
   document.getElementById('btnSubmitReport').addEventListener('click', function(){
-    var name = document.getElementById('reportName').value.trim();
+    var firstName = document.getElementById('reportFirstName').value.trim();
+    var lastName = document.getElementById('reportLastName').value.trim();
+    var email = document.getElementById('reportEmail').value.trim();
     var err = document.getElementById('formErr');
-    if(!name){ err.textContent = 'Merci d\'indiquer votre prénom.'; return; }
+    if(!firstName || !lastName){ err.textContent = 'Merci d\'indiquer votre prénom et votre nom.'; return; }
     if(!selectedQty){ err.textContent = 'Merci d\'indiquer une quantité estimée.'; return; }
     if(!pendingCoords){ err.textContent = 'Position manquante, réessayez.'; return; }
 
+    var refNumber = generateRefNumber();
     var report = {
       id: 'cit_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
-      firstName: name,
+      refNumber: refNumber,
+      firstName: firstName,
+      lastName: lastName,
+      email: email || null,
       quantity: selectedQty,
       photo: photoDataUrl || null,
       lat: pendingCoords.lat,
@@ -354,6 +428,7 @@
     .then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then(function(){
       document.getElementById('reportModal').classList.add('hidden');
+      document.getElementById('thanksRefNumber').textContent = refNumber;
       document.getElementById('thanksModal').classList.remove('hidden');
       loadReports(true);
     })
@@ -373,6 +448,7 @@
 
   // ---- Boot ----
   loadReports();
+  startGps();
   setInterval(function(){ loadReports(true); }, 30000);
 
 })();
