@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Signaler l'ambroisie — Belsentes</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<style>
+  :root{
+    --ink:#1a2b1f;
+    --paper:#f6f4ee;
+    --line:#2f6b3a;
+    --amber:#c98a1f;
+    --panel:#ffffff;
+    --danger:#b23a2e;
+    --muted:#5c6b5f;
+  }
+  *{box-sizing:border-box;}
+  html,body{ margin:0;padding:0;height:100%; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; background:var(--ink); overscroll-behavior:none; }
+  #map{ position:fixed;inset:0;z-index:1; }
+
+  #topbar{
+    position:fixed;top:0;left:0;right:0;z-index:1000;
+    background:var(--panel); border-bottom:3px solid var(--ink);
+    padding:12px 14px; display:flex;flex-direction:column;line-height:1.2;
+  }
+  #topbar .title{ font-weight:800;color:var(--ink);font-size:16px;letter-spacing:-0.01em; }
+  #topbar .subtitle{ font-weight:500;color:var(--muted);font-size:11px;letter-spacing:.03em;text-transform:uppercase; }
+
+  .leaflet-top.leaflet-left{ margin-top:70px; }
+  .leaflet-control-attribution{ font-size:9px; }
+
+  #legend{
+    position:fixed;right:12px;top:78px;z-index:1000;
+    background:var(--panel); border:2px solid var(--ink); border-radius:10px;
+    padding:8px 10px; font-size:11px; line-height:1.9; color:var(--ink);
+    box-shadow:2px 2px 0 rgba(0,0,0,.15);
+  }
+  #legend div{ display:flex;align-items:center;gap:6px; }
+  #legend .dot{ width:12px;height:12px;border-radius:50%;flex:none; }
+
+  #btnReport{
+    position:fixed;right:16px;bottom:24px;z-index:999;
+    background:var(--line);color:#fff;
+    border:3px solid var(--ink); border-radius:30px;
+    padding:14px 20px; font-size:15px;font-weight:800;
+    display:flex;align-items:center;gap:8px;
+    box-shadow:2px 3px 0 rgba(0,0,0,.25); cursor:pointer;
+  }
+  #btnReport:active{ transform:translateY(1px); }
+  #btnReport.active{ background:var(--danger); }
+
+  #placeBanner{
+    position:fixed;left:10px;right:10px;top:72px;z-index:1450;
+    background:var(--ink);color:var(--paper);
+    border-radius:10px;padding:10px 12px;font-size:12px;line-height:1.4;
+    display:none;align-items:center;gap:8px;
+  }
+  #placeBanner.show{ display:flex; }
+  #placeBanner button{
+    background:var(--paper);color:var(--ink);border:none;border-radius:8px;
+    padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;flex:none;
+  }
+
+  #reportModal, #thanksModal{
+    position:fixed;inset:0;z-index:2500;
+    background:rgba(20,25,20,.55);
+    display:flex;align-items:flex-end;justify-content:center;
+  }
+  #reportModal.hidden, #thanksModal.hidden{ display:none; }
+  .sheet{
+    width:100%;max-width:480px; background:var(--panel);
+    border-radius:16px 16px 0 0; border:3px solid var(--ink);border-bottom:none;
+    padding:18px 18px calc(18px + env(safe-area-inset-bottom));
+    max-height:88vh;overflow-y:auto;
+  }
+  .sheet h3{ margin:0 0 14px;font-size:17px;color:var(--ink); }
+  .sheet p.hint{ margin:-8px 0 14px;font-size:12px;color:var(--muted); }
+  .field{ margin-bottom:14px; }
+  .field label{ display:block;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:5px; }
+  .field input[type=text]{ width:100%;font-size:15px;padding:11px 12px;border:2px solid #ccc;border-radius:8px;font-family:inherit; }
+  .qty-options{ display:grid;grid-template-columns:1fr 1fr;gap:8px; }
+  .qty-option{
+    border:2px solid #ccc;border-radius:10px;padding:12px 8px;text-align:center;
+    font-size:13px;font-weight:700;color:var(--ink);cursor:pointer;
+  }
+  .qty-option.selected{ border-color:var(--line);background:#e4f0e2;color:var(--line); }
+  #photoPreview{ margin-top:8px;max-width:100%;border-radius:8px;display:none; }
+  .sheet-actions{ display:flex;gap:10px;margin-top:16px; }
+  .sheet-actions button{
+    flex:1;font-size:14px;font-weight:800;border:2px solid var(--ink);border-radius:10px;
+    padding:13px 10px;background:var(--paper);color:var(--ink);cursor:pointer;
+  }
+  .sheet-actions button.primary{ background:var(--line);color:#fff;border-color:var(--line); }
+  #formErr{ color:var(--danger);font-size:12px;min-height:16px;margin-top:8px; }
+
+  #thanksModal .sheet{ text-align:center;padding-top:28px; }
+  #thanksModal h3{ font-size:19px; }
+
+  #syncBadge{
+    position:fixed;left:50%;transform:translateX(-50%);top:82px;z-index:1500;
+    background:var(--ink);color:var(--paper);font-size:11px;font-weight:700;
+    padding:5px 12px;border-radius:20px;display:none;
+  }
+  #syncBadge.show{ display:block; }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div class="title">🌿 Signaler l'ambroisie</div>
+  <div class="subtitle">Commune de Belsentes</div>
+</div>
+
+<div id="legend">
+  <div><span class="dot" style="background:var(--amber)"></span> Signalé, en cours d'examen</div>
+  <div><span class="dot" style="background:var(--line)"></span> Confirmé par la mairie</div>
+</div>
+
+<div id="syncBadge">Synchronisation…</div>
+
+<div id="map"></div>
+
+<div id="placeBanner">
+  <span>👉 Touchez la carte à l'endroit où vous avez vu l'ambroisie.</span>
+  <button id="btnCancelPlace">Annuler</button>
+</div>
+
+<button id="btnReport">🌿 Signaler ici</button>
+
+<div id="reportModal" class="hidden">
+  <div class="sheet">
+    <h3>Signaler de l'ambroisie</h3>
+    <p class="hint">Merci pour votre vigilance ! Votre signalement sera transmis à la mairie.</p>
+    <div class="field">
+      <label>Votre prénom</label>
+      <input type="text" id="reportName" placeholder="Prénom">
+    </div>
+    <div class="field">
+      <label>Quantité estimée</label>
+      <div class="qty-options">
+        <div class="qty-option" data-qty="&lt;10">Moins de 10 plants</div>
+        <div class="qty-option" data-qty="10-50">10 à 50 plants</div>
+        <div class="qty-option" data-qty="50-500">50 à 500 plants</div>
+        <div class="qty-option" data-qty="&gt;500">Plus de 500 plants</div>
+      </div>
+    </div>
+    <div class="field">
+      <label>Photo (recommandée)</label>
+      <input type="file" id="reportPhoto" accept="image/*" capture="environment">
+      <img id="photoPreview">
+    </div>
+    <div id="formErr"></div>
+    <div class="sheet-actions">
+      <button id="btnCancelReport">Annuler</button>
+      <button class="primary" id="btnSubmitReport">Envoyer le signalement</button>
+    </div>
+  </div>
+</div>
+
+<div id="thanksModal" class="hidden">
+  <div class="sheet">
+    <h3>🌿 Merci !</h3>
+    <p>Votre signalement a bien été transmis à la mairie de Belsentes. Un conseiller va l'examiner prochainement.</p>
+    <div class="sheet-actions">
+      <button class="primary" id="btnCloseThanks" style="width:100%;">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  // ================= CONFIGURATION À REMPLIR =================
+  var CONFIG = {
+    WORKER_URL: "https://ambroisie-belsentes-api.clement-thieuleux.workers.dev/citizen",
+    CITIZEN_SECRET: "belsentes-public-2026"  // doit être IDENTIQUE au secret CITIZEN_SECRET du Worker
+  };
+  // ==============================================================
+
+  var COMMUNE_CENTER = [44.9341, 4.4877];
+
+  var map = L.map('map', { zoomControl: true }).setView(COMMUNE_CENTER, 14);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  var markersLayer = L.layerGroup().addTo(map);
+  var reports = [];
+
+  function showSync(msg){
+    var b = document.getElementById('syncBadge');
+    b.textContent = msg;
+    b.classList.add('show');
+  }
+  function hideSync(){ document.getElementById('syncBadge').classList.remove('show'); }
+
+  function escapeHtml(str){
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function reportIcon(status){
+    var color = status === 'valide' ? '#2f6b3a' : '#c98a1f';
+    return L.divIcon({
+      className: '',
+      html: '<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:' + color + ';border:2px solid #fff;transform:rotate(-45deg);box-shadow:1px 2px 3px rgba(0,0,0,.4);"></div>',
+      iconSize: [22,22],
+      iconAnchor: [11,22]
+    });
+  }
+
+  function renderMarkers(){
+    markersLayer.clearLayers();
+    reports.forEach(function(r){
+      if(r.status === 'rejete') return; // pas affiché publiquement
+      var m = L.marker([r.lat, r.lon], { icon: reportIcon(r.status) });
+      var label = r.status === 'valide' ? 'Confirmé par la mairie' : 'En cours d\'examen';
+      m.bindPopup('<b>' + escapeHtml(r.firstName || 'Anonyme') + '</b><br>' +
+        'Quantité : ' + escapeHtml(r.quantity || '—') + '<br>' +
+        new Date(r.date).toLocaleDateString('fr-FR') + '<br>' +
+        '<i>' + label + '</i>');
+      m.addTo(markersLayer);
+    });
+  }
+
+  function loadReports(silent){
+    if(!silent) showSync('Synchronisation…');
+    fetch(CONFIG.WORKER_URL, { method:'GET', headers:{ 'X-App-Secret': CONFIG.CITIZEN_SECRET } })
+      .then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function(data){
+        reports = data.items || [];
+        renderMarkers();
+        if(!silent) hideSync();
+      })
+      .catch(function(e){
+        console.error('Erreur chargement signalements citoyens', e);
+        if(!silent){ hideSync(); }
+      });
+  }
+
+  // ================= PLACEMENT SUR LA CARTE =================
+  var placing = false;
+  var pendingCoords = null;
+
+  function enterPlacing(){
+    placing = true;
+    document.getElementById('btnReport').classList.add('active');
+    document.getElementById('placeBanner').classList.add('show');
+    map.getContainer().style.cursor = 'crosshair';
+  }
+  function exitPlacing(){
+    placing = false;
+    document.getElementById('btnReport').classList.remove('active');
+    document.getElementById('placeBanner').classList.remove('show');
+    map.getContainer().style.cursor = '';
+  }
+
+  document.getElementById('btnReport').addEventListener('click', function(){
+    if(placing){ exitPlacing(); return; }
+    enterPlacing();
+  });
+  document.getElementById('btnCancelPlace').addEventListener('click', exitPlacing);
+
+  map.on('click', function(e){
+    if(!placing) return;
+    exitPlacing();
+    openForm(e.latlng.lat, e.latlng.lng);
+  });
+
+  // ================= FORMULAIRE =================
+  var selectedQty = null;
+  var photoDataUrl = null;
+
+  function openForm(lat, lon){
+    pendingCoords = { lat: lat, lon: lon };
+    selectedQty = null;
+    photoDataUrl = null;
+    document.getElementById('reportName').value = '';
+    document.getElementById('reportPhoto').value = '';
+    document.getElementById('photoPreview').style.display = 'none';
+    document.getElementById('formErr').textContent = '';
+    document.querySelectorAll('.qty-option').forEach(function(el){ el.classList.remove('selected'); });
+    document.getElementById('reportModal').classList.remove('hidden');
+  }
+
+  document.querySelectorAll('.qty-option').forEach(function(el){
+    el.addEventListener('click', function(){
+      document.querySelectorAll('.qty-option').forEach(function(o){ o.classList.remove('selected'); });
+      el.classList.add('selected');
+      selectedQty = el.getAttribute('data-qty');
+    });
+  });
+
+  document.getElementById('reportPhoto').addEventListener('change', function(e){
+    var file = e.target.files[0];
+    if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(evt){
+      var img = new Image();
+      img.onload = function(){
+        var maxDim = 900;
+        var scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        var canvas = document.createElement('canvas');
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        photoDataUrl = canvas.toDataURL('image/jpeg', 0.6);
+        var prev = document.getElementById('photoPreview');
+        prev.src = photoDataUrl;
+        prev.style.display = 'block';
+      };
+      img.src = evt.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  document.getElementById('btnCancelReport').addEventListener('click', function(){
+    document.getElementById('reportModal').classList.add('hidden');
+  });
+
+  document.getElementById('btnSubmitReport').addEventListener('click', function(){
+    var name = document.getElementById('reportName').value.trim();
+    var err = document.getElementById('formErr');
+    if(!name){ err.textContent = 'Merci d\'indiquer votre prénom.'; return; }
+    if(!selectedQty){ err.textContent = 'Merci d\'indiquer une quantité estimée.'; return; }
+    if(!pendingCoords){ err.textContent = 'Position manquante, réessayez.'; return; }
+
+    var report = {
+      id: 'cit_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
+      firstName: name,
+      quantity: selectedQty,
+      photo: photoDataUrl || null,
+      lat: pendingCoords.lat,
+      lon: pendingCoords.lon,
+      date: new Date().toISOString(),
+      status: 'nouveau'
+    };
+
+    var btn = document.getElementById('btnSubmitReport');
+    btn.disabled = true;
+    btn.textContent = 'Envoi…';
+
+    fetch(CONFIG.WORKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-App-Secret': CONFIG.CITIZEN_SECRET },
+      body: JSON.stringify({ report: report })
+    })
+    .then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(function(){
+      document.getElementById('reportModal').classList.add('hidden');
+      document.getElementById('thanksModal').classList.remove('hidden');
+      loadReports(true);
+    })
+    .catch(function(e){
+      console.error('Erreur envoi signalement', e);
+      err.textContent = 'Erreur lors de l\'envoi. Vérifiez votre connexion et réessayez.';
+    })
+    .finally(function(){
+      btn.disabled = false;
+      btn.textContent = 'Envoyer le signalement';
+    });
+  });
+
+  document.getElementById('btnCloseThanks').addEventListener('click', function(){
+    document.getElementById('thanksModal').classList.add('hidden');
+  });
+
+  // ---- Boot ----
+  loadReports();
+  setInterval(function(){ loadReports(true); }, 30000);
+
+})();
+</script>
+</body>
+</html>
