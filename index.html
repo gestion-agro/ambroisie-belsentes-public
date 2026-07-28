@@ -78,7 +78,7 @@
   .sheet p.hint{ margin:-8px 0 14px;font-size:12px;color:var(--muted); }
   .field{ margin-bottom:14px; }
   .field label{ display:block;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:5px; }
-  .field input[type=text]{ width:100%;font-size:15px;padding:11px 12px;border:2px solid #ccc;border-radius:8px;font-family:inherit; }
+  .field input[type=text], .field input[type=email]{ width:100%;font-size:15px;padding:11px 12px;border:2px solid #ccc;border-radius:8px;font-family:inherit; }
   .qty-options{ display:grid;grid-template-columns:1fr 1fr;gap:8px; }
   .qty-option{
     border:2px solid #ccc;border-radius:10px;padding:12px 8px;text-align:center;
@@ -116,6 +116,7 @@
   <div><span class="dot" style="background:var(--amber)"></span> Signalé, en cours d'examen</div>
   <div><span class="dot" style="background:var(--line)"></span> Confirmé par la mairie</div>
   <div><span class="dot" style="background:#1c6fd9"></span> Votre position</div>
+  <div><span style="display:inline-block;width:16px;height:0;border-top:2px dashed #1a1a1a;"></span> Limite communale</div>
 </div>
 
 <div id="syncBadge">Synchronisation…</div>
@@ -194,6 +195,7 @@
   // ==============================================================
 
   var COMMUNE_CENTER = [44.9341, 4.4877];
+  var INSEE_CODE = "07165";
 
   var map = L.map('map', { zoomControl: true }).setView(COMMUNE_CENTER, 14);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -203,6 +205,101 @@
 
   var markersLayer = L.layerGroup().addTo(map);
   var reports = [];
+
+  // ================= LIMITE COMMUNALE (contour + test dedans/dehors) =================
+  var BOUNDARY_CACHE_KEY = 'ambroisie_boundary_belsentes_public_v1';
+  var boundaryLayer = L.layerGroup().addTo(map);
+  var communeRings = null; // null tant que non chargé (on autorise par défaut dans ce cas)
+
+  function stitchSegments(segments){
+    var segs = segments.map(function(s){ return s.slice(); });
+    var rings = [];
+    function eq(a, b){ return Math.abs(a[0]-b[0]) < 1e-7 && Math.abs(a[1]-b[1]) < 1e-7; }
+    while(segs.length){
+      var ring = segs.shift();
+      var changed = true;
+      while(changed){
+        changed = false;
+        for(var i = 0; i < segs.length; i++){
+          var s = segs[i];
+          var ringStart = ring[0], ringEnd = ring[ring.length-1];
+          var sStart = s[0], sEnd = s[s.length-1];
+          if(eq(ringEnd, sStart)){ ring = ring.concat(s.slice(1)); segs.splice(i,1); changed = true; break; }
+          else if(eq(ringEnd, sEnd)){ ring = ring.concat(s.slice().reverse().slice(1)); segs.splice(i,1); changed = true; break; }
+          else if(eq(ringStart, sEnd)){ ring = s.slice(0,-1).concat(ring); segs.splice(i,1); changed = true; break; }
+          else if(eq(ringStart, sStart)){ ring = s.slice().reverse().slice(0,-1).concat(ring); segs.splice(i,1); changed = true; break; }
+        }
+      }
+      rings.push(ring);
+    }
+    return rings;
+  }
+
+  function pointInRing(lat, lon, ring){
+    var inside = false;
+    for(var i = 0, j = ring.length - 1; i < ring.length; j = i++){
+      var yi = ring[i][0], xi = ring[i][1];
+      var yj = ring[j][0], xj = ring[j][1];
+      var intersect = ((yi > lat) !== (yj > lat)) && (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi);
+      if(intersect) inside = !inside;
+    }
+    return inside;
+  }
+
+  function isInsideCommune(lat, lon){
+    if(!communeRings) return true;
+    return communeRings.some(function(ring){ return pointInRing(lat, lon, ring); });
+  }
+
+  function processBoundaryData(osmData){
+    var rel = (osmData.elements || []).find(function(e){ return e.type === 'relation'; });
+    if(!rel || !rel.members) return;
+    var segments = rel.members
+      .filter(function(m){ return m.role === 'outer' && m.geometry && m.geometry.length > 1; })
+      .map(function(m){ return m.geometry.map(function(p){ return [p.lat, p.lon]; }); });
+    if(segments.length === 0) return;
+    communeRings = stitchSegments(segments);
+    boundaryLayer.clearLayers();
+    communeRings.forEach(function(ring){
+      L.polygon(ring, { color:'#1a1a1a', weight:3, dashArray:'8 6', fill:false, opacity:0.8 }).addTo(boundaryLayer);
+    });
+  }
+
+  function loadCommuneBoundary(){
+    try{
+      var cached = localStorage.getItem(BOUNDARY_CACHE_KEY);
+      if(cached){
+        var parsed = JSON.parse(cached);
+        var ageDays = (Date.now() - parsed.savedAt) / (1000*60*60*24);
+        if(ageDays < 180){ processBoundaryData(parsed.data); }
+      }
+    } catch(e){ console.warn('Lecture cache contour impossible', e); }
+
+    var query = '[out:json][timeout:40];relation["ref:INSEE"="' + INSEE_CODE + '"]["boundary"="administrative"];out geom;';
+    var endpoints = [
+      'https://overpass-api.de/api/interpreter',
+      'https://overpass.kumi.systems/api/interpreter',
+      'https://overpass.openstreetmap.ru/api/interpreter'
+    ];
+    function tryEndpoint(i){
+      if(i >= endpoints.length){ console.warn('Impossible de charger le contour communal.'); return; }
+      var controller = new AbortController();
+      var to = setTimeout(function(){ controller.abort(); }, 40000);
+      fetch(endpoints[i] + '?data=' + encodeURIComponent(query), { signal: controller.signal })
+        .then(function(r){ clearTimeout(to); if(!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then(function(data){
+          processBoundaryData(data);
+          try{ localStorage.setItem(BOUNDARY_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), data: data })); }
+          catch(e){ console.warn('Sauvegarde cache contour impossible', e); }
+        })
+        .catch(function(err){ clearTimeout(to); console.warn('Overpass contour échoué:', endpoints[i], err); tryEndpoint(i+1); });
+    }
+    tryEndpoint(0);
+  }
+
+  var HORS_TERRITOIRE_MSG = 'Ce point semble situé en dehors du territoire de Belsentes.\n\n' +
+    'Merci de faire ce signalement directement sur la plateforme nationale :\n' +
+    'https://signalement-ambroisie.atlasante.fr/dashboard';
   var userMarker = null;
   var accuracyCircle = null;
   var lastFix = null;
@@ -324,6 +421,10 @@
   map.on('click', function(e){
     if(!placing) return;
     exitPlacing();
+    if(!isInsideCommune(e.latlng.lat, e.latlng.lng)){
+      alert(HORS_TERRITOIRE_MSG);
+      return;
+    }
     openForm(e.latlng.lat, e.latlng.lng);
   });
 
@@ -448,6 +549,7 @@
 
   // ---- Boot ----
   loadReports();
+  loadCommuneBoundary();
   startGps();
   setInterval(function(){ loadReports(true); }, 30000);
 
