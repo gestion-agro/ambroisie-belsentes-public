@@ -270,12 +270,14 @@
   }
 
   function loadCommuneBoundary(){
+    var staleBoundary = null;
     try{
       var cached = localStorage.getItem(BOUNDARY_CACHE_KEY);
       if(cached){
         var parsed = JSON.parse(cached);
         var ageDays = (Date.now() - parsed.savedAt) / (1000*60*60*24);
         if(ageDays < 180){ processBoundaryData(parsed.data); }
+        else { staleBoundary = parsed.data; }
       }
     } catch(e){ console.warn('Lecture cache contour impossible', e); }
 
@@ -286,7 +288,11 @@
       'https://overpass.openstreetmap.ru/api/interpreter'
     ];
     function tryEndpoint(i){
-      if(i >= endpoints.length){ console.warn('Impossible de charger le contour communal.'); return; }
+      if(i >= endpoints.length){
+        if(staleBoundary){ console.warn('Réseau indisponible : contour en cache utilisé.'); processBoundaryData(staleBoundary); }
+        else { console.warn('Impossible de charger le contour communal.'); }
+        return;
+      }
       var controller = new AbortController();
       var to = setTimeout(function(){ controller.abort(); }, 40000);
       fetch(endpoints[i] + '?data=' + encodeURIComponent(query), { signal: controller.signal })
