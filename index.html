@@ -109,7 +109,7 @@
 
 <div id="topbar">
   <div class="title">🌿 Signaler l'ambroisie</div>
-  <div class="subtitle">Commune de Belsentes · v2026-07-29-a</div>
+  <div class="subtitle">Commune de Belsentes · v2026-07-29-b</div>
 </div>
 
 <div id="legend">
@@ -168,6 +168,10 @@
         <div class="qty-option" data-qty="50-500">50 à 500 plants</div>
         <div class="qty-option" data-qty="&gt;500">Plus de 500 plants</div>
       </div>
+    </div>
+    <div class="field">
+      <label>Note complémentaire (facultatif)</label>
+      <textarea id="reportNote" placeholder="Emplacement précis, accès, remarques..." style="width:100%;font-size:15px;padding:11px 12px;border:2px solid #ccc;border-radius:8px;font-family:inherit;min-height:60px;resize:vertical;"></textarea>
     </div>
     <div class="field">
       <label>Photo (recommandée)</label>
@@ -478,6 +482,7 @@
     document.getElementById('reportLastName').value = '';
     document.getElementById('reportEmail').value = '';
     document.getElementById('reportPublicConsent').checked = false;
+    document.getElementById('reportNote').value = '';
     document.getElementById('reportPhoto').value = '';
     document.getElementById('photoPreview').style.display = 'none';
     document.getElementById('formErr').textContent = '';
@@ -537,6 +542,7 @@
     var lastName = document.getElementById('reportLastName').value.trim();
     var email = document.getElementById('reportEmail').value.trim();
     var publicNameConsent = document.getElementById('reportPublicConsent').checked;
+    var note = document.getElementById('reportNote').value.trim();
     var err = document.getElementById('formErr');
     if(!firstName || !lastName){ err.textContent = 'Merci d\'indiquer votre prénom et votre nom.'; return; }
     if(!selectedQty){ err.textContent = 'Merci d\'indiquer une quantité estimée.'; return; }
@@ -551,6 +557,7 @@
       email: email || null,
       publicNameConsent: publicNameConsent,
       quantity: selectedQty,
+      note: note || null,
       photo: photoDataUrl || null,
       lat: pendingCoords.lat,
       lon: pendingCoords.lon,
