@@ -118,7 +118,7 @@
 
 <div id="topbar">
   <div class="title">🌿 Signaler l'ambroisie</div>
-  <div class="subtitle">Commune de Belsentes · v2026-07-29-c</div>
+  <div class="subtitle">Commune de Belsentes · v2026-07-29-d</div>
 </div>
 
 <div id="legend">
@@ -441,6 +441,12 @@
     markersLayer.clearLayers();
     reports.forEach(function(r){
       if(r.status === 'rejete') return; // pas affiché publiquement
+      // Un signalement "validé" sans transferredToId signifie que le transfert
+      // vers la base officielle n'a pas réellement abouti (incohérence de
+      // données, ex: bug corrigé entre-temps) : on ne l'affiche pas comme
+      // confirmé pour ne pas induire le public en erreur, ni comme nouveau
+      // (il a déjà été traité par un conseiller) — on le masque simplement.
+      if(r.status === 'valide' && !r.transferredToId) return;
       var m = L.marker([r.lat, r.lon], { icon: reportIcon(r.status) });
       var label = r.status === 'valide' ? 'Confirmé par la mairie' : 'En cours d\'examen';
       // Par défaut, aucune donnée identifiante n'est affichée publiquement
