@@ -50,6 +50,15 @@
   #btnReport:active{ transform:translateY(1px); }
   #btnReport.active{ background:var(--danger); }
 
+  #btnShowAbout{
+    position:fixed;left:16px;bottom:24px;z-index:999;
+    background:var(--panel);color:var(--ink);
+    border:3px solid var(--ink);border-radius:50%;
+    width:48px;height:48px;font-size:20px;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:2px 3px 0 rgba(0,0,0,.2);cursor:pointer;
+  }
+
   #placeBanner{
     position:fixed;left:10px;right:10px;top:72px;z-index:1450;
     background:var(--ink);color:var(--paper);
@@ -62,12 +71,12 @@
     padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;flex:none;
   }
 
-  #reportModal, #thanksModal{
+  #reportModal, #thanksModal, #aboutModal{
     position:fixed;inset:0;z-index:2500;
     background:rgba(20,25,20,.55);
     display:flex;align-items:flex-end;justify-content:center;
   }
-  #reportModal.hidden, #thanksModal.hidden{ display:none; }
+  #reportModal.hidden, #thanksModal.hidden, #aboutModal.hidden{ display:none; }
   .sheet{
     width:100%;max-width:480px; background:var(--panel);
     border-radius:16px 16px 0 0; border:3px solid var(--ink);border-bottom:none;
@@ -109,7 +118,7 @@
 
 <div id="topbar">
   <div class="title">🌿 Signaler l'ambroisie</div>
-  <div class="subtitle">Commune de Belsentes · v2026-07-29-b</div>
+  <div class="subtitle">Commune de Belsentes · v2026-07-29-c</div>
 </div>
 
 <div id="legend">
@@ -129,6 +138,30 @@
 </div>
 
 <button id="btnReport">🌿 Signaler ici</button>
+<button id="btnShowAbout" title="À propos">ℹ️</button>
+
+<div id="aboutModal" class="hidden">
+  <div class="sheet">
+    <h3>À propos</h3>
+    <p style="font-size:13px;line-height:1.6;">
+      <b>🌿 Signaler l'ambroisie — Belsentes</b><br>
+      Cette page permet à tout habitant de signaler la présence d'ambroisie sur le territoire de la commune de
+      Belsentes (07165).
+    </p>
+    <p style="font-size:13px;line-height:1.6;">
+      Chaque signalement est examiné par un conseiller municipal avant d'être confirmé. Les points affichés en
+      orange sont en cours d'examen ; ceux en vert ont été confirmés par la mairie.
+    </p>
+    <p style="font-size:13px;line-height:1.6;">
+      Vos informations (nom, prénom, email) sont transmises uniquement à la mairie pour le suivi de votre signalement,
+      et ne sont jamais publiées sans votre accord explicite. Conformément au RGPD, vous pouvez demander l'accès, la
+      rectification ou la suppression de vos données en contactant la mairie de Belsentes.
+    </p>
+    <div class="sheet-actions">
+      <button class="primary" id="btnCloseAbout" style="width:100%;">Fermer</button>
+    </div>
+  </div>
+</div>
 
 <div id="reportModal" class="hidden">
   <div class="sheet">
@@ -589,6 +622,13 @@
       btn.disabled = false;
       btn.textContent = 'Envoyer le signalement';
     });
+  });
+
+  document.getElementById('btnShowAbout').addEventListener('click', function(){
+    document.getElementById('aboutModal').classList.remove('hidden');
+  });
+  document.getElementById('btnCloseAbout').addEventListener('click', function(){
+    document.getElementById('aboutModal').classList.add('hidden');
   });
 
   document.getElementById('btnCloseThanks').addEventListener('click', function(){
