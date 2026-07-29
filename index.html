@@ -118,7 +118,7 @@
 
 <div id="topbar">
   <div class="title">🌿 Signaler l'ambroisie</div>
-  <div class="subtitle">Commune de Belsentes · v2026-07-29-d</div>
+  <div class="subtitle">Commune de Belsentes · v2026-07-29-e</div>
 </div>
 
 <div id="legend">
@@ -247,7 +247,12 @@
   var INSEE_CODE = "07165";
   var OSM_RELATION_ID = "9105126";
 
-  var map = L.map('map', { zoomControl: true }).setView(COMMUNE_CENTER, 14);
+  // Zone utile autour de Belsentes : on limite la carte à ce carré pour éviter
+  // de charger inutilement des tuiles très loin de la commune (plus léger,
+  // plus rapide, et évite de se perdre dans la carte).
+  var MAP_BOUNDS = L.latLngBounds([44.870, 4.410], [44.998, 4.565]);
+
+  var map = L.map('map', { zoomControl: true, maxBounds: MAP_BOUNDS.pad(0.15), minZoom: 12 }).setView(COMMUNE_CENTER, 14);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '&copy; OpenStreetMap contributors'
@@ -405,8 +410,12 @@
 
       // Centre la carte une seule fois sur la première position obtenue,
       // pour ne pas gêner si l'utilisateur est en train de viser un point ailleurs.
+      // Si le GPS renvoie une position aberrante (hors zone, ex: PC sans puce
+      // GPS localisé au hasard), on ne centre pas dessus et on reste sur la commune.
       if(!hasCenteredOnUser){
-        map.setView([lat, lon], 15, { animate: true });
+        if(MAP_BOUNDS.contains([lat, lon])){
+          map.setView([lat, lon], 15, { animate: true });
+        }
         hasCenteredOnUser = true;
       }
     }, function(err){
