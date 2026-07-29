@@ -196,6 +196,7 @@
 
   var COMMUNE_CENTER = [44.9341, 4.4877];
   var INSEE_CODE = "07165";
+  var OSM_RELATION_ID = "9105126";
 
   var map = L.map('map', { zoomControl: true }).setView(COMMUNE_CENTER, 14);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -292,7 +293,7 @@
       }
     } catch(e){ console.warn('Lecture cache contour impossible', e); }
 
-    var query = '[out:json][timeout:40];relation["ref:INSEE"="' + INSEE_CODE + '"]["boundary"="administrative"]["admin_level"="8"];out geom;';
+    var query = '[out:json][timeout:40];relation(' + OSM_RELATION_ID + ');out geom;';
     var endpoints = [
       'https://overpass-api.de/api/interpreter',
       'https://overpass.kumi.systems/api/interpreter',
