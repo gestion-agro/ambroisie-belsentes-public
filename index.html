@@ -3,199 +3,413 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Signaler l'ambroisie — Belsentes</title>
+<title>Inspection Ambroisie — Belsentes</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <style>
   :root{
     --ink:#1a2b1f;
     --paper:#f6f4ee;
     --line:#2f6b3a;
+    --line-done:#c8501f;
     --amber:#c98a1f;
     --panel:#ffffff;
     --danger:#b23a2e;
     --muted:#5c6b5f;
   }
   *{box-sizing:border-box;}
-  html,body{ margin:0;padding:0;height:100%; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; background:var(--ink); overscroll-behavior:none; }
-  #map{ position:fixed;inset:0;z-index:1; }
+  html,body{
+    margin:0;padding:0;height:100%;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--ink);
+    overscroll-behavior:none;
+  }
+  #map{
+    position:fixed;inset:0;
+    z-index:1;
+  }
 
+  /* ---- top bar ---- */
   #topbar{
     position:fixed;top:0;left:0;right:0;z-index:1000;
-    background:var(--panel); border-bottom:3px solid var(--ink);
-    padding:12px 14px; display:flex;flex-direction:column;line-height:1.2;
+    background:var(--panel);
+    border-bottom:3px solid var(--ink);
+    padding:10px 14px;
+    display:flex;align-items:center;justify-content:space-between;
+    gap:10px;
+    font-size:14px;
   }
-  #topbar .title{ font-weight:800;color:var(--ink);font-size:16px;letter-spacing:-0.01em; }
-  #topbar .subtitle{ font-weight:500;color:var(--muted);font-size:11px;letter-spacing:.03em;text-transform:uppercase; }
+  #topbar .title{
+    font-weight:800;
+    color:var(--ink);
+    letter-spacing:-0.01em;
+    display:flex;flex-direction:column;line-height:1.15;
+  }
+  #topbar .title small{
+    font-weight:500;color:var(--muted);font-size:11px;letter-spacing:.03em;text-transform:uppercase;
+  }
+  #status{
+    display:flex;align-items:center;gap:6px;
+    font-weight:700;font-size:12px;
+    padding:5px 10px;border-radius:20px;
+    border:2px solid var(--ink);
+    white-space:nowrap;
+  }
+  #status.ok{background:#e4f0e2;color:var(--line);}
+  #status.wait{background:#fbeecd;color:var(--amber);}
+  #status.err{background:#f6dedb;color:var(--danger);}
+  #status .dot{width:8px;height:8px;border-radius:50%;background:currentColor;}
+  #status.wait .dot{animation:pulse 1.2s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.25;}}
 
-  .leaflet-top.leaflet-left{ margin-top:70px; }
-  .leaflet-control-attribution{ font-size:9px; }
+  /* ---- bottom controls ---- */
+  #controls{
+    position:fixed;left:0;right:0;bottom:0;z-index:1000;
+    background:var(--panel);
+    border-top:3px solid var(--ink);
+    padding:12px 14px calc(12px + env(safe-area-inset-bottom));
+    display:flex;gap:10px;align-items:center;
+  }
+  button.btn{
+    flex:1;
+    font-size:14px;font-weight:800;
+    border:2px solid var(--ink);
+    border-radius:10px;
+    padding:13px 10px;
+    background:var(--paper);
+    color:var(--ink);
+    cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+  }
+  button.btn:active{transform:translateY(1px);}
+  button.btn.primary{
+    background:var(--line);color:#fff;border-color:var(--line);
+  }
+  button.btn.locate{
+    flex:0 0 52px;
+    padding:13px 0;
+  }
+  button.btn:disabled{opacity:.5;}
 
+  /* ---- legend ---- */
   #legend{
-    position:fixed;right:12px;top:78px;z-index:1000;
-    background:var(--panel); border:2px solid var(--ink); border-radius:10px;
-    padding:8px 10px; font-size:11px; line-height:1.9; color:var(--ink);
+    position:fixed;right:12px;top:72px;z-index:1000;
+    background:var(--panel);
+    border:2px solid var(--ink);
+    border-radius:10px;
+    padding:8px 10px;
+    font-size:11px;
+    line-height:1.9;
+    color:var(--ink);
     box-shadow:2px 2px 0 rgba(0,0,0,.15);
   }
-  #legend div{ display:flex;align-items:center;gap:6px; }
-  #legend .dot{ width:12px;height:12px;border-radius:50%;flex:none; }
+  #legend div{display:flex;align-items:center;gap:6px;}
+  #legend .sw{width:16px;height:3px;border-radius:2px;flex:none;}
+  #legend #legendBody{display:block;}
+  #legendBody > div{display:flex;align-items:center;gap:6px;}
+  #legend #legendBody.collapsed{display:none;}
 
-  #btnReport{
-    position:fixed;right:16px;bottom:24px;z-index:999;
+  /* ---- loading overlay ---- */
+  #loading{
+    position:fixed;inset:0;z-index:2000;
+    background:var(--ink);
+    color:var(--paper);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:14px;text-align:center;padding:30px;
+  }
+  #loading.hidden{display:none;}
+  #loading .spinner{
+    width:36px;height:36px;border-radius:50%;
+    border:4px solid rgba(246,244,238,.25);
+    border-top-color:var(--paper);
+    animation:spin 0.9s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+  #loading h2{margin:0;font-size:17px;}
+  #loading p{margin:0;font-size:13px;color:#c8d2c9;max-width:320px;}
+  #loading .err-box{
+    margin-top:6px;background:#3a2320;border:1px solid #6b352b;
+    border-radius:8px;padding:10px 14px;font-size:12px;color:#f6dedb;max-width:340px;
+  }
+  #loading button.btn{margin-top:10px;max-width:220px;}
+
+  .leaflet-control-attribution{font-size:9px;}
+  .leaflet-top.leaflet-left{ margin-top:64px; }
+
+  /* ---- login screen ---- */
+  #loginScreen{
+    position:fixed;inset:0;z-index:3000;
+    background:var(--ink);
+    color:var(--paper);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:16px;padding:30px;text-align:center;
+  }
+  #loginScreen.hidden{display:none;}
+  #loginScreen h1{margin:0;font-size:20px;}
+  #loginScreen p{margin:0;color:#c8d2c9;font-size:13px;max-width:300px;}
+  #loginScreen input{
+    width:100%;max-width:280px;
+    font-size:16px;padding:13px 14px;
+    border-radius:10px;border:2px solid var(--paper);
+    background:#fff;color:var(--ink);
+  }
+  #loginScreen button{
+    width:100%;max-width:280px;
+    font-size:15px;font-weight:800;
+    padding:13px 14px;border-radius:10px;
+    border:2px solid var(--line);
     background:var(--line);color:#fff;
-    border:3px solid var(--ink); border-radius:30px;
-    padding:14px 20px; font-size:15px;font-weight:800;
-    display:flex;align-items:center;gap:8px;
-    box-shadow:2px 3px 0 rgba(0,0,0,.25); cursor:pointer;
+    cursor:pointer;
   }
-  #btnReport:active{ transform:translateY(1px); }
-  #btnReport.active{ background:var(--danger); }
+  #loginScreen .loginErr{color:#f0a898;font-size:12px;min-height:16px;}
+  #loginScreen .nameField{margin-top:6px;}
 
-  #btnShowAbout{
-    position:fixed;left:16px;bottom:24px;z-index:999;
-    background:var(--panel);color:var(--ink);
-    border:3px solid var(--ink);border-radius:50%;
-    width:48px;height:48px;font-size:20px;
+  /* ---- report button (floating) ---- */
+  #btnReport{
+    position:fixed;right:14px;bottom:88px;z-index:1001;
+    background:var(--danger);color:#fff;
+    border:3px solid var(--ink);
+    border-radius:50%;
+    width:62px;height:62px;
+    font-size:26px;
     display:flex;align-items:center;justify-content:center;
-    box-shadow:2px 3px 0 rgba(0,0,0,.2);cursor:pointer;
+    box-shadow:2px 3px 0 rgba(0,0,0,.25);
+    cursor:pointer;
   }
+  #btnReport:active{transform:translateY(1px);}
+
+  #btnPlacePin{
+    position:fixed;right:84px;bottom:98px;z-index:1001;
+    background:var(--panel);color:var(--ink);
+    border:3px solid var(--ink);
+    border-radius:50%;
+    width:46px;height:46px;
+    font-size:19px;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:2px 3px 0 rgba(0,0,0,.2);
+    cursor:pointer;
+  }
+  #btnPlacePin.active{
+    background:var(--danger);color:#fff;
+    animation:pinPulse 1s infinite;
+  }
+  @keyframes pinPulse{0%,100%{box-shadow:2px 3px 0 rgba(0,0,0,.2);}50%{box-shadow:0 0 0 6px rgba(178,58,46,.25);}}
 
   #placeBanner{
-    position:fixed;left:10px;right:10px;top:72px;z-index:1450;
+    position:fixed;left:10px;right:10px;top:56px;z-index:1450;
     background:var(--ink);color:var(--paper);
     border-radius:10px;padding:10px 12px;font-size:12px;line-height:1.4;
     display:none;align-items:center;gap:8px;
   }
-  #placeBanner.show{ display:flex; }
+  #placeBanner.show{display:flex;}
   #placeBanner button{
     background:var(--paper);color:var(--ink);border:none;border-radius:8px;
     padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;flex:none;
   }
 
-  #reportModal, #thanksModal, #aboutModal{
+  /* ---- report modal ---- */
+  #reportModal, #listModal, #accountModal, #quickEditModal, #aboutModal{
     position:fixed;inset:0;z-index:2500;
     background:rgba(20,25,20,.55);
     display:flex;align-items:flex-end;justify-content:center;
   }
-  #reportModal.hidden, #thanksModal.hidden, #aboutModal.hidden{ display:none; }
+  #reportModal.hidden, #listModal.hidden, #accountModal.hidden, #quickEditModal.hidden, #aboutModal.hidden{display:none;}
   .sheet{
-    width:100%;max-width:480px; background:var(--panel);
-    border-radius:16px 16px 0 0; border:3px solid var(--ink);border-bottom:none;
-    padding:18px 18px calc(18px + env(safe-area-inset-bottom));
-    max-height:88vh;overflow-y:auto;
+    width:100%;max-width:480px;
+    background:var(--panel);
+    border-radius:16px 16px 0 0;
+    border:3px solid var(--ink);border-bottom:none;
+    padding:16px 16px calc(16px + env(safe-area-inset-bottom));
+    max-height:85vh;overflow-y:auto;
   }
-  .sheet h3{ margin:0 0 14px;font-size:17px;color:var(--ink); }
-  .sheet p.hint{ margin:-8px 0 14px;font-size:12px;color:var(--muted); }
-  .field{ margin-bottom:14px; }
-  .field label{ display:block;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:5px; }
-  .field input[type=text], .field input[type=email]{ width:100%;font-size:15px;padding:11px 12px;border:2px solid #ccc;border-radius:8px;font-family:inherit; }
+  .sheet h3{margin:0 0 12px;font-size:16px;color:var(--ink);}
+  .sheet-header{
+    position:sticky;top:-16px;background:var(--panel);
+    display:flex;align-items:center;justify-content:space-between;
+    margin:-16px -16px 12px;padding:16px 16px 10px;
+    z-index:5;border-bottom:1px solid #eee;
+  }
+  .sheet-header h3{margin:0;}
+  .sheet-close-x{
+    background:none;border:none;font-size:26px;line-height:1;
+    color:var(--muted);cursor:pointer;padding:2px 8px;flex:none;
+  }
+  .field{margin-bottom:12px;}
+  .field label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:4px;}
+  .field input[type=text], .field textarea{
+    width:100%;font-size:15px;padding:10px 12px;
+    border:2px solid #ccc;border-radius:8px;
+    font-family:inherit;
+  }
+  .field textarea{min-height:70px;resize:vertical;}
   .qty-options{ display:grid;grid-template-columns:1fr 1fr;gap:8px; }
   .qty-option{
     border:2px solid #ccc;border-radius:10px;padding:12px 8px;text-align:center;
     font-size:13px;font-weight:700;color:var(--ink);cursor:pointer;
   }
   .qty-option.selected{ border-color:var(--line);background:#e4f0e2;color:var(--line); }
-  #photoPreview{ margin-top:8px;max-width:100%;border-radius:8px;display:none; }
-  .sheet-actions{ display:flex;gap:10px;margin-top:16px; }
-  .sheet-actions button{
-    flex:1;font-size:14px;font-weight:800;border:2px solid var(--ink);border-radius:10px;
-    padding:13px 10px;background:var(--paper);color:var(--ink);cursor:pointer;
+  .sheet-actions{display:flex;gap:10px;margin-top:6px;}
+  .sheet-actions button{flex:1;}
+  #photoPreview{margin-top:8px;max-width:100%;border-radius:8px;display:none;}
+
+  /* ---- signal markers ---- */
+  .signal-icon{
+    width:26px;height:26px;border-radius:50% 50% 50% 0;
+    background:var(--danger);border:2px solid #fff;
+    transform:rotate(-45deg);
+    box-shadow:1px 2px 3px rgba(0,0,0,.4);
   }
-  .sheet-actions button.primary{ background:var(--line);color:#fff;border-color:var(--line); }
-  #formErr{ color:var(--danger);font-size:12px;min-height:16px;margin-top:8px; }
+  .signal-icon.done{background:#5c8a5c;}
+  .signal-icon.erreur{background:#8a8a8a;}
 
-  #thanksModal .sheet{ text-align:center;padding-top:28px; }
-  #thanksModal h3{ font-size:19px; }
-
+  /* ---- list ---- */
+  .signal-row{
+    border:2px solid var(--ink);border-radius:10px;
+    padding:10px 12px;margin-bottom:10px;
+    font-size:13px;color:var(--ink);
+  }
+  .signal-row .meta{color:var(--muted);font-size:11px;margin-bottom:4px;}
+  .signal-row .note{margin:6px 0;}
+  .signal-row img{max-width:100%;border-radius:6px;margin:6px 0;}
+  .signal-row .row-actions{display:flex;gap:8px;margin-top:8px;}
+  .status-pill{
+    display:inline-block;font-size:10px;font-weight:800;
+    padding:2px 8px;border-radius:20px;
+    background:#f6dedb;color:var(--danger);
+    text-transform:uppercase;letter-spacing:.03em;
+  }
+  .status-pill.done{background:#e4f0e2;color:var(--line);}
+  .status-pill.erreur{background:#e6e6e6;color:#666;}
+  #btnListToggle{
+    position:fixed;left:14px;bottom:88px;z-index:1001;
+    background:var(--panel);color:var(--ink);
+    border:3px solid var(--ink);
+    border-radius:50%;
+    width:52px;height:52px;
+    font-size:20px;font-weight:800;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:2px 3px 0 rgba(0,0,0,.2);
+    cursor:pointer;
+  }
+  #btnAccount{
+    position:fixed;left:14px;bottom:150px;z-index:1001;
+    background:var(--panel);color:var(--ink);
+    border:3px solid var(--ink);
+    border-radius:50%;
+    width:44px;height:44px;
+    font-size:18px;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:2px 3px 0 rgba(0,0,0,.2);
+    cursor:pointer;
+  }
+  #listBadge{
+    position:absolute;top:-4px;right:-4px;
+    background:var(--danger);color:#fff;
+    border-radius:50%;min-width:18px;height:18px;
+    font-size:10px;font-weight:800;
+    display:none;align-items:center;justify-content:center;
+    padding:0 3px;
+  }
+  #listBadge.show{ display:flex; }
+  .citizen-row{
+    border:2px solid var(--ink);border-radius:10px;
+    padding:10px 12px;margin-bottom:10px;font-size:13px;color:var(--ink);
+  }
+  .citizen-row .meta{ color:var(--muted);font-size:11px;margin-bottom:4px; }
+  .citizen-row img{ max-width:100%;border-radius:6px;margin:6px 0; }
+  .citizen-row .row-actions{ display:flex;gap:8px;margin-top:8px; }
+  .user-row{
+    display:flex;align-items:center;justify-content:space-between;
+    border:1px solid #ddd;border-radius:8px;
+    padding:8px 10px;margin-bottom:6px;font-size:13px;
+  }
+  .user-row .role-tag{font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;}
+  .user-row button{font-size:11px;padding:5px 9px;border-radius:6px;border:1px solid var(--danger);color:var(--danger);background:#fff;}
+  #gpsWarning{
+    position:fixed;left:10px;right:10px;top:56px;z-index:1400;
+    background:#fbeecd;border:2px solid var(--amber);color:#5c4413;
+    border-radius:10px;padding:10px 12px;font-size:12px;line-height:1.4;
+    display:none;
+  }
+  #gpsWarning.show{display:flex;align-items:flex-start;gap:8px;}
+  #gpsWarning button{
+    background:none;border:none;font-size:16px;color:#5c4413;cursor:pointer;
+    line-height:1;padding:0 2px;flex:none;
+  }
   #syncBadge{
-    position:fixed;left:50%;transform:translateX(-50%);top:82px;z-index:1500;
-    background:var(--ink);color:var(--paper);font-size:11px;font-weight:700;
-    padding:5px 12px;border-radius:20px;display:none;
+    position:fixed;left:50%;transform:translateX(-50%);top:64px;z-index:1500;
+    background:var(--ink);color:var(--paper);
+    font-size:11px;font-weight:700;
+    padding:5px 12px;border-radius:20px;
+    display:none;
   }
-  #syncBadge.show{ display:block; }
+  #syncBadge.show{display:block;}
 </style>
 </head>
 <body>
 
-<div id="topbar">
-  <div class="title">🌿 Signaler l'ambroisie</div>
-  <div class="subtitle">Commune de Belsentes · v2026-07-29-e</div>
-</div>
-
-<div id="legend">
-  <div><span class="dot" style="background:var(--amber)"></span> Signalé, en cours d'examen</div>
-  <div><span class="dot" style="background:var(--line)"></span> Confirmé par la mairie</div>
-  <div><span class="dot" style="background:#1c6fd9"></span> Votre position</div>
-  <div><span style="display:inline-block;width:16px;height:0;border-top:2px dashed #1a1a1a;"></span> Limite communale</div>
+<div id="loginScreen">
+  <h1>🌿 Inspection Ambroisie</h1>
+  <p>Belsentes (07165) — accès réservé aux conseillers</p>
+  <input type="text" id="loginName" placeholder="Identifiant" autocomplete="off">
+  <input type="password" id="loginPass" placeholder="Mot de passe" autocomplete="off" class="nameField">
+  <button id="btnLogin">Entrer</button>
+  <div class="loginErr" id="loginErr"></div>
 </div>
 
 <div id="syncBadge">Synchronisation…</div>
 
-<div id="map"></div>
-
-<div id="placeBanner">
-  <span>👉 Touchez la carte à l'endroit où vous avez vu l'ambroisie.</span>
-  <button id="btnCancelPlace">Annuler</button>
+<div id="gpsWarning">
+  <span>📶 Position peu précise détectée (probablement pas de puce GPS sur cet appareil). Pour un suivi terrain fiable, utilisez plutôt un smartphone — sauf si cet ordinateur dispose d'un GPS ou d'une carte SIM intégrés.</span>
+  <button id="btnCloseGpsWarning" title="Fermer">✕</button>
 </div>
 
-<button id="btnReport">🌿 Signaler ici</button>
-<button id="btnShowAbout" title="À propos">ℹ️</button>
+<div id="map"></div>
 
-<div id="aboutModal" class="hidden">
-  <div class="sheet">
-    <h3>À propos</h3>
-    <p style="font-size:13px;line-height:1.6;">
-      <b>🌿 Signaler l'ambroisie — Belsentes</b><br>
-      Cette page permet à tout habitant de signaler la présence d'ambroisie sur le territoire de la commune de
-      Belsentes (07165).
-    </p>
-    <p style="font-size:13px;line-height:1.6;">
-      Chaque signalement est examiné par un conseiller municipal avant d'être confirmé. Les points affichés en
-      orange sont en cours d'examen ; ceux en vert ont été confirmés par la mairie.
-    </p>
-    <p style="font-size:13px;line-height:1.6;">
-      Vos informations (nom, prénom, email) sont transmises uniquement à la mairie pour le suivi de votre signalement,
-      et ne sont jamais publiées sans votre accord explicite. Conformément au RGPD, vous pouvez demander l'accès, la
-      rectification ou la suppression de vos données en contactant la mairie de Belsentes.
-    </p>
-    <div class="sheet-actions">
-      <button class="primary" id="btnCloseAbout" style="width:100%;">Fermer</button>
-    </div>
+<div id="topbar">
+  <div class="title">Inspection Ambroisie<small>Belsentes · 07165 · v2026-07-29-q</small></div>
+  <div id="status" class="wait"><span class="dot"></span><span id="statusText">Recherche GPS…</span></div>
+</div>
+
+<div id="legend">
+  <div id="legendHeader" style="display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;">
+    <b style="font-size:12px;">Légende</b>
+    <span id="legendToggleIcon" style="font-size:12px;">▾</span>
   </div>
+  <div id="legendBody">
+    <div><label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="chkRoadsRC" checked style="margin:0;"> <span class="sw" style="background:#2f6b3a"></span> Communale (RC)</label></div>
+    <div><label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="chkRoadsRD" style="margin:0;"> <span class="sw" style="background:#c9781f"></span> Départementale (RD)</label></div>
+    <div><label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="chkRoadsRN" style="margin:0;"> <span class="sw" style="background:#8a3fbf"></span> Nationale (RN)</label></div>
+    <div><span class="sw" style="background:var(--line-done)"></span> Mon trajet</div>
+    <div><span class="sw" style="background:#1c6fd9;border-top:2px dashed #1c6fd9;background:none"></span> Autres conseillers</div>
+    <div><span class="sw" style="background:#1a1a1a;border-top:2px dashed #1a1a1a;background:none"></span> Limite communale</div>
+    <div><span class="sw" style="background:#c9268a"></span> Citoyen (en attente)</div>
+    <div style="margin-top:4px;"><button id="btnReloadRoads" style="font-size:10px;padding:4px 8px;border:1px solid var(--ink);border-radius:6px;background:var(--paper);cursor:pointer;">↻ Recharger les routes</button></div>
+  </div>
+</div>
+
+<button id="btnListToggle" title="Liste des signalements">☰<span id="listBadge">0</span></button>
+<button id="btnReport" title="Signaler ambroisie">🌿</button>
+<button id="btnPlacePin" title="Signaler à un endroit précis sur la carte">📍</button>
+
+<div id="placeBanner">
+  <span>👉 Touchez la carte à l'endroit exact du signalement.</span>
+  <button id="btnCancelPlace">Annuler</button>
 </div>
 
 <div id="reportModal" class="hidden">
   <div class="sheet">
     <h3>Signaler de l'ambroisie</h3>
-    <p class="hint">Merci pour votre vigilance ! Votre signalement sera transmis à la mairie.</p>
-    <div class="field" style="display:flex;gap:10px;">
-      <div style="flex:1;">
-        <label>Prénom</label>
-        <input type="text" id="reportFirstName" placeholder="Prénom">
-      </div>
-      <div style="flex:1;">
-        <label>Nom</label>
-        <input type="text" id="reportLastName" placeholder="Nom">
-      </div>
+    <div class="field">
+      <label>Position</label>
+      <div id="reportCoords" style="font-size:13px;color:var(--muted)">—</div>
     </div>
     <div class="field">
-      <label>Email (facultatif)</label>
-      <input type="email" id="reportEmail" placeholder="pour être informé du suivi">
+      <label>Signalé par</label>
+      <div id="reportByName" style="font-size:14px;font-weight:700;color:var(--ink)">—</div>
     </div>
-    <div class="field" style="display:flex;align-items:flex-start;gap:8px;">
-      <input type="checkbox" id="reportPublicConsent" style="margin-top:3px;flex:none;">
-      <label for="reportPublicConsent" style="font-size:12px;font-weight:400;color:var(--muted);cursor:pointer;">
-        J'accepte que mon <b>prénom</b> soit visible publiquement sur la carte à côté de mon signalement.
-        Si vous ne cochez pas cette case, votre signalement apparaîtra comme <b>« Anonyme »</b> pour les autres visiteurs.
-      </label>
-    </div>
-    <p class="hint" style="margin-top:-6px;">
-      Vos informations (nom, prénom, email) sont transmises uniquement à la mairie de Belsentes pour le suivi de votre
-      signalement, et ne sont jamais publiées sans votre accord explicite ci-dessus. Conformément au RGPD, vous pouvez
-      demander l'accès, la rectification ou la suppression de vos données en contactant la mairie.
-    </p>
     <div class="field">
       <label>Quantité estimée</label>
-      <div class="qty-options">
+      <div class="qty-options" id="reportQtyOptions">
         <div class="qty-option" data-qty="&lt;10">Moins de 10 plants</div>
         <div class="qty-option" data-qty="10-50">10 à 50 plants</div>
         <div class="qty-option" data-qty="50-500">50 à 500 plants</div>
@@ -204,31 +418,156 @@
     </div>
     <div class="field">
       <label>Note complémentaire (facultatif)</label>
-      <textarea id="reportNote" placeholder="Emplacement précis, accès, remarques..." style="width:100%;font-size:15px;padding:11px 12px;border:2px solid #ccc;border-radius:8px;font-family:inherit;min-height:60px;resize:vertical;"></textarea>
+      <textarea id="reportNote" placeholder="Emplacement précis, accès..."></textarea>
     </div>
     <div class="field">
-      <label>Photo (recommandée)</label>
+      <label>Photo (si besoin)</label>
       <input type="file" id="reportPhoto" accept="image/*" capture="environment">
       <img id="photoPreview">
     </div>
-    <div id="formErr"></div>
+    <div id="reportFormErr" style="color:var(--danger);font-size:12px;min-height:16px;"></div>
     <div class="sheet-actions">
-      <button id="btnCancelReport">Annuler</button>
-      <button class="primary" id="btnSubmitReport">Envoyer le signalement</button>
+      <button class="btn" id="btnCancelReport">Annuler</button>
+      <button class="btn primary" id="btnSaveReport">Enregistrer</button>
     </div>
   </div>
 </div>
 
-<div id="thanksModal" class="hidden">
+<div id="listModal" class="hidden">
   <div class="sheet">
-    <h3>🌿 Merci !</h3>
-    <p>Votre signalement a bien été transmis à la mairie de Belsentes. Un conseiller va l'examiner prochainement.</p>
-    <p style="font-weight:800;font-size:16px;color:var(--line);">N° de signalement : <span id="thanksRefNumber">—</span></p>
-    <p class="hint" style="margin-top:-4px;">Conservez ce numéro si vous souhaitez suivre votre signalement.</p>
+    <div class="sheet-header">
+      <h3>Signalements (<span id="listCount">0</span>)</h3>
+      <button class="sheet-close-x" id="btnCloseListX" title="Fermer">✕</button>
+    </div>
+    <div id="listContent"></div>
     <div class="sheet-actions">
-      <button class="primary" id="btnCloseThanks" style="width:100%;">Fermer</button>
+      <button class="btn" id="btnCloseList">Fermer</button>
     </div>
   </div>
+</div>
+
+<div id="quickEditModal" class="hidden">
+  <div class="sheet">
+    <div class="sheet-header">
+      <h3>Signalement</h3>
+      <button class="sheet-close-x" id="btnCloseQuickEditX" title="Fermer">✕</button>
+    </div>
+    <div id="quickEditContent"></div>
+    <div class="sheet-actions">
+      <button class="btn" id="btnCloseQuickEdit">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<button id="btnAccount" title="Mon compte">👤</button>
+
+<div id="accountModal" class="hidden">
+  <div class="sheet">
+    <h3>Mon compte</h3>
+    <div class="field">
+      <label>Identifiant connecté</label>
+      <div id="accountWhoami" style="font-size:14px;font-weight:700"></div>
+    </div>
+    <div class="field">
+      <label>Nouveau mot de passe</label>
+      <input type="text" id="newPassword" placeholder="Nouveau mot de passe">
+    </div>
+    <div class="sheet-actions">
+      <button class="btn" id="btnCancelAccount">Annuler</button>
+      <button class="btn primary" id="btnChangePassword">Changer mon mot de passe</button>
+    </div>
+    <div id="adminSection" style="display:none;margin-top:18px;border-top:2px solid #ddd;padding-top:14px;">
+      <h3>Gérer les utilisateurs (admin)</h3>
+      <div id="userListContent"></div>
+      <div class="field" style="margin-top:14px;display:flex;gap:10px;">
+        <div style="flex:1;">
+          <label>Prénom</label>
+          <input type="text" id="newUserFirstName" placeholder="Prénom">
+        </div>
+        <div style="flex:1;">
+          <label>Nom</label>
+          <input type="text" id="newUserLastName" placeholder="Nom">
+        </div>
+      </div>
+      <div class="field">
+        <label>Identifiant de connexion</label>
+        <input type="text" id="newUserName" placeholder="ex: jdupont">
+      </div>
+      <div class="field">
+        <label>Mot de passe initial</label>
+        <input type="text" id="newUserPass" placeholder="mot de passe temporaire">
+      </div>
+      <button class="btn primary" id="btnAddUser" style="width:100%;">Créer l'utilisateur</button>
+      <div style="margin-top:16px;border-top:2px solid #ddd;padding-top:14px;">
+        <h3 style="font-size:14px;">Numéros de référence (SM)</h3>
+        <p style="font-size:12px;color:var(--muted);margin-top:-8px;">Attribue un numéro (SM-AAMMJJ-XXXX) à tous les signalements existants qui n'en ont pas encore.</p>
+        <button class="btn" id="btnBackfillRefNumbers" style="width:100%;">Attribuer les numéros manquants</button>
+      </div>
+      <div style="margin-top:16px;border-top:2px solid #ddd;padding-top:14px;">
+        <h3 style="font-size:14px;">Numéros de référence (signalements citoyens)</h3>
+        <p style="font-size:12px;color:var(--muted);margin-top:-8px;">Attribue un numéro (AMB-AAMMJJ-XXXX) aux anciens signalements citoyens qui affichent encore leur identifiant technique.</p>
+        <button class="btn" id="btnBackfillCitizenRefNumbers" style="width:100%;">Attribuer les numéros AMB manquants</button>
+      </div>
+      <div style="margin-top:16px;border-top:2px solid #ddd;padding-top:14px;">
+        <h3 style="font-size:14px;">Cohérence citoyens ↔ signalements officiels</h3>
+        <p style="font-size:12px;color:var(--muted);margin-top:-8px;">
+          Vérifie que chaque signalement citoyen marqué "validé" a bien un signalement officiel correspondant.
+          Répare le lien s'il existe, ou remet en attente ceux dont le transfert a échoué.
+        </p>
+        <button class="btn" id="btnReconcileCitizens" style="width:100%;">Vérifier la cohérence</button>
+      </div>
+      <div style="margin-top:16px;border-top:2px solid #ddd;padding-top:14px;">
+        <h3 style="font-size:14px;color:var(--danger);">⚠️ Remise à zéro des signalements citoyens</h3>
+        <p style="font-size:12px;color:var(--muted);margin-top:-8px;">
+          Supprime <b>tous</b> les signalements citoyens (en attente, validés, rejetés) de la base publique.
+          Les signalements officiels mairie (SM) ne sont <b>jamais</b> touchés par cette action.
+        </p>
+        <button class="btn" id="btnResetCitizens" style="width:100%;background:#f6dedb;border-color:var(--danger);color:var(--danger);">Remettre à zéro les signalements citoyens</button>
+      </div>
+    </div>
+    <div class="loginErr" id="accountErr"></div>
+    <button class="btn" id="btnLogout" style="width:100%;margin-top:16px;background:#f6dedb;border-color:var(--danger);color:var(--danger);">Déconnexion</button>
+    <button class="btn" id="btnShowAbout" style="width:100%;margin-top:10px;">ℹ️ À propos de l'application</button>
+  </div>
+</div>
+
+<div id="aboutModal" class="hidden">
+  <div class="sheet">
+    <div class="sheet-header">
+      <h3>À propos</h3>
+      <button class="sheet-close-x" id="btnCloseAboutX" title="Fermer">✕</button>
+    </div>
+    <p style="font-size:13px;line-height:1.6;">
+      <b>🌿 Inspection Ambroisie — Belsentes</b><br>
+      Application interne de suivi et de signalement de l'ambroisie sur le territoire de la commune de Belsentes (07165),
+      à destination des conseillers municipaux.
+    </p>
+    <p style="font-size:13px;line-height:1.6;">
+      Les signalements validés sont transmis pour traitement, avec un suivi de classification (validé / en cours / doublon /
+      pas d'ambroisie) destiné notamment au signalement auprès de FREDON.
+    </p>
+    <p style="font-size:13px;line-height:1.6;">
+      Une page publique associée permet aux habitants de signaler eux-mêmes de l'ambroisie, avec validation obligatoire
+      par un conseiller avant transfert dans la base officielle.
+    </p>
+    <p style="font-size:12px;color:var(--muted);">Version affichée en haut de l'écran (ex: v2026-07-29-f).</p>
+    <div class="sheet-actions">
+      <button class="btn" id="btnCloseAbout" style="width:100%;">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<div id="controls">
+  <button class="btn locate" id="btnCenter" title="Centrer sur ma position">◎</button>
+  <button class="btn" id="btnFollow">Suivi coupé</button>
+  <button class="btn" id="btnClear">Effacer trace</button>
+</div>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <h2>Chargement des routes de Belsentes…</h2>
+  <p>Récupération du réseau routier communal depuis OpenStreetMap (10 à 20 secondes en général). Une fois chargées, les routes seront mises en cache et s'afficheront instantanément la prochaine fois.</p>
+  <div id="loadErr" style="display:none" class="err-box"></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -238,39 +577,213 @@
 
   // ================= CONFIGURATION À REMPLIR =================
   var CONFIG = {
-    WORKER_URL: "https://ambroisie-belsentes-api.clement-thieuleux.workers.dev/citizen",
-    CITIZEN_SECRET: "T2Ux@tZhczXU?K$9,"  // doit être IDENTIQUE au secret CITIZEN_SECRET du Worker
+    WORKER_URL: "https://ambroisie-belsentes-api.clement-thieuleux.workers.dev/signalements",
+    APP_SECRET: "belsentes-secret-2026"   // doit être IDENTIQUE au secret APP_SECRET mis dans le Worker Cloudflare
   };
   // ==============================================================
 
+  // Centre approximatif de Belsentes (07165), Ardèche
   var COMMUNE_CENTER = [44.9341, 4.4877];
-  var INSEE_CODE = "07165";
-  var OSM_RELATION_ID = "9105126";
+  var COMMUNE_NAME = "Belsentes";
 
-  // Zone utile autour de Belsentes : on limite la carte à ce carré pour éviter
-  // de charger inutilement des tuiles très loin de la commune (plus léger,
-  // plus rapide, et évite de se perdre dans la carte).
-  var MAP_BOUNDS = L.latLngBounds([44.870, 4.410], [44.998, 4.565]);
+  // Zone utile un peu plus large que côté public (contexte routes/communes
+  // voisines utile aux conseillers), mais toujours limitée pour rester léger.
+  var MAP_BOUNDS = L.latLngBounds([44.78, 4.30], [45.09, 4.68]);
 
-  var map = L.map('map', { zoomControl: true, maxBounds: MAP_BOUNDS.pad(0.15), minZoom: 12 }).setView(COMMUNE_CENTER, 14);
+  var map = L.map('map', { zoomControl: true, attributionControl: true, maxBounds: MAP_BOUNDS.pad(0.1), minZoom: 10 })
+    .setView(COMMUNE_CENTER, 13);
+
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
 
-  var markersLayer = L.layerGroup().addTo(map);
-  var reports = [];
+  var roadsLayerRC = L.layerGroup().addTo(map);
+  var roadsLayerRD = L.layerGroup(); // pas ajoutée à la carte par défaut (case décochée)
+  var roadsLayerRN = L.layerGroup(); // pas ajoutée à la carte par défaut (case décochée)
+  var trackLayer = L.layerGroup().addTo(map);
+  var otherTracksLayer = L.layerGroup().addTo(map);
+  var userMarker = null;
+  var accuracyCircle = null;
+  var trackCoords = [];
+  var trackPolyline = null;
+  var following = false; // le suivi (enregistrement + centrage) doit être activé manuellement par le conseiller
+  var lastFix = null;
+
+  // Trace partagée : version simplifiée envoyée aux autres conseillers
+  var sharedTrackPoints = [];
+  var lastSharedPoint = null;
+  var lastSyncedPointCount = 0;
+  var SHARE_MIN_DISTANCE = 15; // mètres — n'envoie un nouveau point que si on a bougé d'au moins cette distance
+  var TRACK_SYNC_INTERVAL = 45000; // 45s
+
+  function haversineMeters(lat1, lon1, lat2, lon2){
+    var R = 6371000;
+    var toRad = function(d){ return d * Math.PI / 180; };
+    var dLat = toRad(lat2 - lat1);
+    var dLon = toRad(lon2 - lon1);
+    var a = Math.sin(dLat/2)*Math.sin(dLat/2) +
+            Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)*Math.sin(dLon/2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+
+  function setStatus(mode, text){
+    var el = document.getElementById('status');
+    el.className = mode;
+    document.getElementById('statusText').textContent = text;
+  }
+
+  function showLoadError(msg){
+    document.getElementById('loadErr').style.display = 'block';
+    document.getElementById('loadErr').textContent = msg;
+    var box = document.getElementById('loading');
+    var btn = document.createElement('button');
+    btn.className = 'btn primary';
+    btn.textContent = 'Réessayer';
+    btn.onclick = function(){ location.reload(); };
+    box.appendChild(btn);
+  }
+
+  function hideLoading(){
+    document.getElementById('loading').classList.add('hidden');
+  }
+
+  // ---- Charger les routes de la commune via Overpass (OpenStreetMap) ----
+  var CACHE_KEY = 'ambroisie_routes_belsentes_v3';
+  var CACHE_MAX_AGE_DAYS = 90;
+
+  // Code INSEE de Belsentes — permet d'interroger Overpass sur le contour
+  // administratif RÉEL de la commune plutôt qu'un simple rectangle, qui
+  // débordait sur les communes voisines.
+  var INSEE_CODE = "07165";
+  // Identifiant de la relation OpenStreetMap correspondant à Belsentes (retrouvé
+  // via la fiche Wikidata Q59695357, propriété "OpenStreetMap relation ID"),
+  // qui est aussi la relation utilisée par la carte Wikipédia. Bien plus fiable
+  // qu'une recherche par tags, qui pouvait remonter l'ancienne commune déléguée.
+  var OSM_RELATION_ID = "9105126";
+  // Boîte englobante de secours, utilisée uniquement si la requête par
+  // contour administratif échoue ou ne renvoie rien (ex: tag manquant dans OSM).
+  var BBOX = { south: 44.870, west: 4.410, north: 44.998, east: 4.565 };
+
+  function loadCommuneRoads(){
+    var staleCache = null;
+    // 1) Essayer le cache local d'abord — instantané, fonctionne hors ligne
+    try{
+      var cached = localStorage.getItem(CACHE_KEY);
+      if(cached){
+        var parsed = JSON.parse(cached);
+        var ageDays = (Date.now() - parsed.savedAt) / (1000*60*60*24);
+        var isPrecise = parsed.precision === 'insee';
+        if(ageDays < CACHE_MAX_AGE_DAYS){
+          drawRoads(parsed.data);
+          hideLoading();
+          if(isPrecise){
+            // Cache déjà précis et récent : simple rafraîchissement discret en arrière-plan
+            loadRoadsData(function(data, precision){
+              roadsLayerRC.clearLayers(); roadsLayerRD.clearLayers(); roadsLayerRN.clearLayers();
+              drawRoads(data);
+              saveCache(data, precision);
+            }, function(){ /* échec silencieux, on garde le cache précis existant */ });
+            return;
+          }
+          // Le cache existant vient du rectangle de secours (pas garanti précis) :
+          // on continue vers une VRAIE tentative réseau ci-dessous plutôt que de
+          // s'arrêter là, pour ne pas rester bloqué indéfiniment sur un rectangle.
+        } else {
+          staleCache = parsed.data;
+        }
+      }
+    } catch(e){ console.warn('Lecture cache impossible', e); }
+
+    // 2) Télécharger (ou re-télécharger si le cache n'était que le rectangle),
+    // avec timeout et bouton d'échappement
+    var skipTimer = setTimeout(function(){
+      var box = document.getElementById('loading');
+      if(box.classList.contains('hidden')) return;
+      var p = document.getElementById('loadErr');
+      p.style.display = 'block';
+      p.textContent = 'Ça prend plus de temps que prévu (connexion lente ou serveur chargé).';
+      if(!document.getElementById('btnSkip')){
+        var skipBtn = document.createElement('button');
+        skipBtn.id = 'btnSkip';
+        skipBtn.className = 'btn';
+        skipBtn.textContent = 'Continuer sans les routes pour l\'instant';
+        skipBtn.onclick = hideLoading;
+        box.appendChild(skipBtn);
+      }
+    }, 12000);
+
+    loadRoadsData(function(data, precision){
+      clearTimeout(skipTimer);
+      roadsLayerRC.clearLayers(); roadsLayerRD.clearLayers(); roadsLayerRN.clearLayers();
+      drawRoads(data);
+      saveCache(data, precision);
+      hideLoading();
+    }, function(){
+      clearTimeout(skipTimer);
+      hideLoading();
+      if(staleCache){
+        console.warn('Réseau indisponible : affichage des routes en cache (peut-être périmées).');
+        drawRoads(staleCache);
+      } else {
+        showLoadError('Impossible de contacter OpenStreetMap pour récupérer les routes. Vérifiez votre connexion internet et réessayez. La carte de base et le GPS restent utilisables.');
+      }
+    });
+  }
+
+  // Essaie d'abord le contour administratif précis (code INSEE) ; si ça échoue
+  // ou ne renvoie aucune route, se replie sur la boîte englobante (moins précis
+  // mais garantit un affichage). Le callback reçoit aussi la provenance ('insee'
+  // ou 'bbox') pour que l'appelant sache si le résultat est fiable à long terme.
+  function loadRoadsData(onSuccess, onFail){
+    var queryInsee =
+      '[out:json][timeout:40];' +
+      'area["ref:INSEE"="' + INSEE_CODE + '"]->.a;' +
+      'way(area.a)["highway"]["highway"!~"^(footway|cycleway|steps|path|construction|proposed)$"];' +
+      'out body geom;';
+
+    fetchFromOverpass(queryInsee, function(data){
+      if(data.elements && data.elements.length > 0){
+        onSuccess(data, 'insee');
+      } else {
+        console.warn('Contour INSEE introuvable ou vide dans OSM, repli sur la boîte englobante.');
+        var queryBbox =
+          '[out:json][timeout:25]' +
+          '[bbox:' + BBOX.south + ',' + BBOX.west + ',' + BBOX.north + ',' + BBOX.east + '];' +
+          'way["highway"]["highway"!~"^(footway|cycleway|steps|path|construction|proposed)$"];' +
+          'out body geom;';
+        fetchFromOverpass(queryBbox, function(data2){ onSuccess(data2, 'bbox'); }, onFail, 20000);
+      }
+    }, function(){
+      // La requête INSEE elle-même a échoué (réseau/serveur) : on tente quand même la bbox
+      var queryBbox =
+        '[out:json][timeout:25]' +
+        '[bbox:' + BBOX.south + ',' + BBOX.west + ',' + BBOX.north + ',' + BBOX.east + '];' +
+        'way["highway"]["highway"!~"^(footway|cycleway|steps|path|construction|proposed)$"];' +
+        'out body geom;';
+      fetchFromOverpass(queryBbox, function(data2){ onSuccess(data2, 'bbox'); }, onFail, 20000);
+    }, 45000);
+  }
+
+  function saveCache(data, precision){
+    try{
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ savedAt: Date.now(), precision: precision || 'bbox', data: data }));
+    } catch(e){ console.warn('Sauvegarde cache impossible', e); }
+  }
 
   // ================= LIMITE COMMUNALE (contour + test dedans/dehors) =================
-  var BOUNDARY_CACHE_KEY = 'ambroisie_boundary_belsentes_public_v3';
+  var BOUNDARY_CACHE_KEY = 'ambroisie_boundary_belsentes_v3';
   var boundaryLayer = L.layerGroup().addTo(map);
 
-  // Contour de secours intégré (source IGN/INSEE 2018 via france-geojson),
-  // combinant Nonières (07165) + Saint-Julien-Labrousse (07256), les deux
-  // anciennes communes fusionnées en Belsentes en 2019. Affiché immédiatement,
-  // remplacé par une version plus précise si Overpass répond avec succès.
+  // Contour de secours intégré directement dans le code (source : IGN Admin
+  // Express / INSEE COG 2018, via france-geojson), combinant les deux anciennes
+  // communes qui forment Belsentes depuis leur fusion en 2019 (Nonières 07165 +
+  // Saint-Julien-Labrousse 07256). Affiché immédiatement, sans dépendre
+  // d'Overpass qui peut être indisponible ; remplacé par une version plus
+  // précise si Overpass répond avec succès.
   var FALLBACK_BOUNDARY_RINGS = [[[44.88284,4.51027],[44.88577,4.51037],[44.8899,4.50819],[44.89061,4.50626],[44.88899,4.50347],[44.88811,4.50022],[44.88859,4.49661],[44.88803,4.49456],[44.89034,4.49389],[44.89245,4.49461],[44.89377,4.49383],[44.89232,4.49162],[44.89334,4.49014],[44.89513,4.49039],[44.89618,4.48999],[44.89659,4.48722],[44.8989,4.48662],[44.8997,4.48486],[44.90171,4.48499],[44.90229,4.4861],[44.90489,4.48372],[44.90833,4.48531],[44.90873,4.48836],[44.90965,4.48922],[44.91151,4.48871],[44.91438,4.49149],[44.91628,4.49613],[44.91681,4.49893],[44.91933,4.50072],[44.92217,4.50058],[44.92404,4.49983],[44.92582,4.50083],[44.92741,4.49988],[44.92845,4.50436],[44.92828,4.50878],[44.92701,4.5116],[44.92768,4.51434],[44.92763,4.51688],[44.92871,4.51958],[44.92861,4.52237],[44.92693,4.52559],[44.92845,4.53059],[44.9281,4.53272],[44.92822,4.53843],[44.92857,4.53883],[44.9281,4.54458],[44.92874,4.54662],[44.92856,4.54915],[44.92467,4.54926],[44.92334,4.54858],[44.92046,4.54892],[44.91944,4.54989],[44.91816,4.54876],[44.91519,4.54877],[44.91168,4.54675],[44.91291,4.54324],[44.91298,4.53976],[44.91032,4.5377],[44.90899,4.53435],[44.90709,4.53239],[44.90601,4.53216],[44.90392,4.52821],[44.90121,4.5245],[44.89946,4.52102],[44.89725,4.52131],[44.89538,4.52314],[44.89339,4.5232],[44.89267,4.52849],[44.8907,4.52784],[44.88821,4.52826],[44.88553,4.53259],[44.88244,4.53336],[44.88141,4.53161],[44.88311,4.52679],[44.88247,4.525],[44.88056,4.52386],[44.88272,4.51855],[44.884,4.51753],[44.88347,4.51516],[44.88229,4.51556],[44.87958,4.51394],[44.87952,4.51217],[44.88113,4.51064],[44.88284,4.51027]],[[44.93607,4.4601],[44.93932,4.46167],[44.94354,4.46012],[44.94674,4.45719],[44.94804,4.45761],[44.9503,4.45719],[44.95181,4.45578],[44.9524,4.45295],[44.95386,4.45161],[44.95694,4.4462],[44.95972,4.44396],[44.96025,4.44474],[44.95975,4.44764],[44.95695,4.45262],[44.95608,4.45664],[44.95423,4.4612],[44.95236,4.46266],[44.94921,4.46729],[44.94629,4.46966],[44.94404,4.46933],[44.94337,4.47139],[44.94175,4.47138],[44.94053,4.47433],[44.94035,4.4797],[44.93931,4.48746],[44.93744,4.48796],[44.93627,4.48601],[44.93551,4.49258],[44.93295,4.49027],[44.93164,4.49046],[44.93039,4.49207],[44.93008,4.49423],[44.92823,4.4965],[44.92741,4.49988],[44.92582,4.50083],[44.92404,4.49983],[44.92217,4.50058],[44.91933,4.50072],[44.91681,4.49893],[44.91628,4.49613],[44.91438,4.49149],[44.91151,4.48871],[44.90965,4.48922],[44.90873,4.48836],[44.90833,4.48531],[44.90489,4.48372],[44.90506,4.48171],[44.90448,4.47966],[44.90613,4.47718],[44.90783,4.47579],[44.90757,4.47233],[44.91062,4.46841],[44.9111,4.4671],[44.91066,4.46328],[44.91134,4.46122],[44.91248,4.46031],[44.91345,4.46631],[44.91561,4.46645],[44.91621,4.46805],[44.91856,4.46724],[44.92333,4.47022],[44.92489,4.46831],[44.92632,4.46867],[44.92881,4.47098],[44.9315,4.4709],[44.93296,4.47203],[44.93603,4.46973],[44.93527,4.46153],[44.93607,4.4601]]];
 
+  // On démarre avec le contour de secours, immédiatement affiché.
   var communeRings = FALLBACK_BOUNDARY_RINGS;
 
   function drawBoundaryRings(rings){
@@ -323,6 +836,9 @@
   function processBoundaryData(osmData){
     var rels = (osmData.elements || []).filter(function(e){ return e.type === 'relation' && e.members; });
     if(rels.length === 0) return;
+    // Par précaution : si plusieurs relations correspondent (ex: ancienne commune
+    // déléguée avant fusion partageant le même code INSEE), on garde celle avec
+    // le contour le plus étendu, qui correspond à la commune actuelle fusionnée.
     var rel = rels.reduce(function(best, r){
       var pts = r.members.reduce(function(sum, m){ return sum + (m.geometry ? m.geometry.length : 0); }, 0);
       return (!best || pts > best._pts) ? Object.assign({_pts: pts}, r) : best;
@@ -342,93 +858,1176 @@
       if(cached){
         var parsed = JSON.parse(cached);
         var ageDays = (Date.now() - parsed.savedAt) / (1000*60*60*24);
-        if(ageDays < 180){ processBoundaryData(parsed.data); }
-        else { staleBoundary = parsed.data; }
+        if(ageDays < 180){
+          processBoundaryData(parsed.data);
+        } else {
+          staleBoundary = parsed.data;
+        }
       }
     } catch(e){ console.warn('Lecture cache contour impossible', e); }
 
     var query = '[out:json][timeout:40];relation(' + OSM_RELATION_ID + ');out geom;';
-    var endpoints = [
-      'https://overpass-api.de/api/interpreter',
-      'https://overpass.kumi.systems/api/interpreter',
-      'https://overpass.openstreetmap.ru/api/interpreter'
-    ];
-    function tryEndpoint(i){
-      if(i >= endpoints.length){
-        if(staleBoundary){ console.warn('Réseau indisponible : contour en cache utilisé.'); processBoundaryData(staleBoundary); }
-        else { console.warn('Impossible de charger le contour communal.'); }
-        return;
+    fetchFromOverpass(query, function(data){
+      processBoundaryData(data);
+      try{ localStorage.setItem(BOUNDARY_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), data: data })); }
+      catch(e){ console.warn('Sauvegarde cache contour impossible', e); }
+    }, function(){
+      if(staleBoundary){
+        console.warn('Réseau indisponible : affichage du contour en cache (peut-être périmé).');
+        processBoundaryData(staleBoundary);
+      } else {
+        console.warn('Impossible de charger le contour communal (limite non affichée, vérification dedans/dehors désactivée).');
       }
-      var controller = new AbortController();
-      var to = setTimeout(function(){ controller.abort(); }, 40000);
-      fetch(endpoints[i] + '?data=' + encodeURIComponent(query), { signal: controller.signal })
-        .then(function(r){ clearTimeout(to); if(!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-        .then(function(data){
-          processBoundaryData(data);
-          try{ localStorage.setItem(BOUNDARY_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), data: data })); }
-          catch(e){ console.warn('Sauvegarde cache contour impossible', e); }
-        })
-        .catch(function(err){ clearTimeout(to); console.warn('Overpass contour échoué:', endpoints[i], err); tryEndpoint(i+1); });
-    }
-    tryEndpoint(0);
+    }, 40000);
   }
 
   var HORS_TERRITOIRE_MSG = 'Ce point semble situé en dehors du territoire de Belsentes.\n\n' +
     'Merci de faire ce signalement directement sur la plateforme nationale :\n' +
     'https://signalement-ambroisie.atlasante.fr/dashboard';
-  var userMarker = null;
-  var accuracyCircle = null;
-  var lastFix = null;
-  var hasCenteredOnUser = false;
 
+  function fetchFromOverpass(query, onSuccess, onFail, timeoutMs){
+    timeoutMs = timeoutMs || 20000;
+    var endpoints = [
+      'https://overpass-api.de/api/interpreter',
+      'https://overpass.kumi.systems/api/interpreter',
+      'https://overpass.openstreetmap.ru/api/interpreter'
+    ];
+
+    function tryEndpoint(i){
+      if(i >= endpoints.length){ onFail(); return; }
+      var controller = new AbortController();
+      var to = setTimeout(function(){ controller.abort(); }, timeoutMs);
+      fetch(endpoints[i] + '?data=' + encodeURIComponent(query), { signal: controller.signal })
+        .then(function(r){
+          clearTimeout(to);
+          if(!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        })
+        .then(function(data){ onSuccess(data); })
+        .catch(function(err){
+          clearTimeout(to);
+          console.warn('Overpass endpoint failed:', endpoints[i], err);
+          tryEndpoint(i + 1);
+        });
+    }
+    tryEndpoint(0);
+  }
+
+  // Classification approximative RC / RD / RN, basée sur le numéro de route (ref),
+  // OSM n'ayant pas de tag direct "gestionnaire de la voie".
+  function classifyRoad(tags){
+    var ref = (tags.ref || '').trim();
+    if(/^D\s?\d/i.test(ref)) return 'RD';
+    if(/^N\s?\d/i.test(ref)) return 'RN';
+    if(tags.highway === 'trunk' || tags.highway === 'motorway') return 'RN';
+    return 'RC';
+  }
+
+  function roadStyle(highwayType, roadClass){
+    var w = 4, dash = null, color = '#2f6b3a'; // vert par défaut : route communale (RC)
+
+    if(roadClass === 'RD'){
+      color = '#c9781f'; // orange : départementale, pas de notre ressort
+      w = 5;
+    } else if(roadClass === 'RN'){
+      color = '#8a3fbf'; // violet : nationale
+      w = 6;
+    } else {
+      // Style RC selon le type de voie
+      if(highwayType === 'unclassified' || highwayType === 'residential'){
+        w = 4;
+      } else if(highwayType === 'tertiary' || highwayType === 'secondary' || highwayType === 'primary'){
+        w = 5;
+      } else if(highwayType === 'track'){
+        w = 3; dash = '2 6';
+      } else if(highwayType === 'service'){
+        w = 3; dash = '1 5';
+      }
+    }
+    return { color: color, weight: w, opacity: 0.85, dashArray: dash };
+  }
+
+  var roadBounds = null;
+  var hasCenteredOnce = false;
+
+  function drawRoads(osmData){
+    if(!osmData.elements || osmData.elements.length === 0){
+      showLoadError('Aucune route trouvée autour de Belsentes dans OpenStreetMap pour le moment.');
+      return;
+    }
+    var bounds = [];
+    osmData.elements.forEach(function(el){
+      if(el.type !== 'way' || !el.geometry) return;
+      var latlngs = el.geometry.map(function(pt){ return [pt.lat, pt.lon]; });
+      var tags = el.tags || {};
+      var roadClass = classifyRoad(tags);
+      var style = roadStyle(tags.highway, roadClass);
+      var line = L.polyline(latlngs, style);
+      var label = tags.name ? tags.name : ('Voie (' + (tags.highway || '?') + ')');
+      var classLabel = roadClass === 'RD' ? 'Départementale (RD)' : (roadClass === 'RN' ? 'Nationale (RN)' : 'Communale (RC)');
+      line.bindPopup('<b>' + label + '</b><br>' + classLabel + (tags.ref ? ' — ' + tags.ref : ''));
+      var targetLayer = roadClass === 'RD' ? roadsLayerRD : (roadClass === 'RN' ? roadsLayerRN : roadsLayerRC);
+      line.addTo(targetLayer);
+      latlngs.forEach(function(p){ bounds.push(p); });
+    });
+    if(bounds.length){
+      roadBounds = L.latLngBounds(bounds);
+      if(!hasCenteredOnce){
+        map.fitBounds(roadBounds, { padding: [30, 30] });
+        hasCenteredOnce = true;
+      }
+    }
+  }
+
+  // ---- GPS tracking ----
   var userIcon = L.divIcon({
     className: '',
-    html: '<div style="width:16px;height:16px;border-radius:50%;background:#1c6fd9;border:3px solid #fff;box-shadow:0 0 0 2px rgba(28,111,217,.4);"></div>',
-    iconSize: [16,16],
-    iconAnchor: [8,8]
+    html: '<div style="width:18px;height:18px;border-radius:50%;background:#1c6fd9;border:3px solid #fff;box-shadow:0 0 0 2px rgba(28,111,217,.4);"></div>',
+    iconSize: [18,18],
+    iconAnchor: [9,9]
   });
 
-  function startGps(){
-    if(!('geolocation' in navigator)) return;
-    navigator.geolocation.watchPosition(function(pos){
-      var lat = pos.coords.latitude;
-      var lon = pos.coords.longitude;
-      var acc = pos.coords.accuracy;
-      lastFix = [lat, lon];
+  function onGpsSuccess(pos){
+    var lat = pos.coords.latitude;
+    var lon = pos.coords.longitude;
+    var acc = pos.coords.accuracy;
+    lastFix = [lat, lon];
 
-      if(!userMarker){
-        userMarker = L.marker([lat, lon], { icon: userIcon, zIndexOffset: 500 }).addTo(map);
+    setStatus('ok', 'GPS actif · précision ' + Math.round(acc) + ' m');
+    checkGpsAccuracyWarning(acc);
+
+    if(!userMarker){
+      userMarker = L.marker([lat, lon], { icon: userIcon, zIndexOffset: 1000 }).addTo(map);
+    } else {
+      userMarker.setLatLng([lat, lon]);
+    }
+
+    if(!accuracyCircle){
+      accuracyCircle = L.circle([lat, lon], { radius: acc, color:'#1c6fd9', weight:1, fillOpacity:0.08 }).addTo(map);
+    } else {
+      accuracyCircle.setLatLng([lat, lon]);
+      accuracyCircle.setRadius(acc);
+    }
+
+    // trace parcourue (affichage local, tous les points) — uniquement si le
+    // conseiller a explicitement activé le suivi (jamais automatique à l'ouverture).
+    if(following){
+      trackCoords.push([lat, lon]);
+      if(!trackPolyline){
+        trackPolyline = L.polyline(trackCoords, { color:'#c8501f', weight:5, opacity:0.9 }).addTo(trackLayer);
       } else {
-        userMarker.setLatLng([lat, lon]);
-      }
-      if(!accuracyCircle){
-        accuracyCircle = L.circle([lat, lon], { radius: acc, color:'#1c6fd9', weight:1, fillOpacity:0.08 }).addTo(map);
-      } else {
-        accuracyCircle.setLatLng([lat, lon]);
-        accuracyCircle.setRadius(acc);
+        trackPolyline.setLatLngs(trackCoords);
       }
 
-      // Centre la carte une seule fois sur la première position obtenue,
-      // pour ne pas gêner si l'utilisateur est en train de viser un point ailleurs.
-      // Si le GPS renvoie une position aberrante (hors zone, ex: PC sans puce
-      // GPS localisé au hasard), on ne centre pas dessus et on reste sur la commune.
-      if(!hasCenteredOnUser){
-        if(MAP_BOUNDS.contains([lat, lon])){
-          map.setView([lat, lon], 15, { animate: true });
-        }
-        hasCenteredOnUser = true;
+      // trace partagée (envoyée aux autres conseillers, simplifiée par distance)
+      if(!lastSharedPoint || haversineMeters(lastSharedPoint[0], lastSharedPoint[1], lat, lon) > SHARE_MIN_DISTANCE){
+        sharedTrackPoints.push([lat, lon]);
+        lastSharedPoint = [lat, lon];
       }
-    }, function(err){
-      console.warn('GPS indisponible', err);
-    }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
+
+      // Si le GPS renvoie une position aberrante (hors zone utile, ex: PC sans
+      // puce GPS localisé au hasard), on ne suit pas dessus : on revient sur la
+      // commune plutôt que de partir loin de la zone de travail.
+      if(MAP_BOUNDS.contains([lat, lon])){
+        map.setView([lat, lon], Math.max(map.getZoom(), 16), { animate:true });
+      } else {
+        map.setView(COMMUNE_CENTER, 13, { animate:true });
+      }
+    }
   }
+
+  var ACCURACY_WARNING_THRESHOLD = 300; // mètres
+  var gpsWarningDismissed = false;
+
+  function checkGpsAccuracyWarning(acc){
+    var box = document.getElementById('gpsWarning');
+    if(gpsWarningDismissed) return;
+    if(acc > ACCURACY_WARNING_THRESHOLD){
+      box.classList.add('show');
+    } else {
+      box.classList.remove('show');
+    }
+  }
+
+  document.getElementById('btnCloseGpsWarning').addEventListener('click', function(){
+    gpsWarningDismissed = true;
+    document.getElementById('gpsWarning').classList.remove('show');
+  });
+
+  function onGpsError(err){
+    var msg = 'GPS indisponible';
+    if(err.code === 1) msg = 'Accès à la position refusé';
+    else if(err.code === 2) msg = 'Position indisponible';
+    else if(err.code === 3) msg = 'Délai GPS dépassé';
+    setStatus('err', msg);
+  }
+
+  function startGps(){
+    if(!('geolocation' in navigator)){
+      setStatus('err', 'GPS non supporté par ce navigateur');
+      return;
+    }
+    navigator.geolocation.watchPosition(onGpsSuccess, onGpsError, {
+      enableHighAccuracy: true,
+      maximumAge: 2000,
+      timeout: 15000
+    });
+  }
+
+  // ---- Controls ----
+  document.getElementById('btnCenter').addEventListener('click', function(){
+    if(lastFix && MAP_BOUNDS.contains(lastFix)){
+      map.setView(lastFix, 17, { animate:true });
+      following = true;
+      updateFollowBtn();
+    } else if(roadBounds){
+      map.fitBounds(roadBounds, { padding:[30,30] });
+    } else {
+      map.setView(COMMUNE_CENTER, 13, { animate:true });
+    }
+  });
+
+  var btnFollow = document.getElementById('btnFollow');
+  function updateFollowBtn(){
+    btnFollow.textContent = following ? '🔴 Suivi du trajet activé' : '⏸ Activer le suivi du trajet';
+    btnFollow.className = following ? 'btn primary' : 'btn';
+  }
+  btnFollow.addEventListener('click', function(){
+    following = !following;
+    updateFollowBtn();
+    if(following && lastFix){ map.setView(lastFix, Math.max(map.getZoom(),16)); }
+  });
+
+  // Couper le suivi auto si l'utilisateur déplace la carte manuellement
+  map.on('dragstart', function(){
+    if(following){ following = false; updateFollowBtn(); }
+  });
+
+  document.getElementById('btnClear').addEventListener('click', function(){
+    if(confirm('Effacer la trace du trajet parcouru ?')){
+      trackCoords = [];
+      if(trackPolyline){ trackLayer.clearLayers(); trackPolyline = null; }
+    }
+  });
+
+  // ================= AUTHENTIFICATION MULTI-COMPTES =================
+  var currentUser = null;   // identifiant connecté
+  var currentRole = null;   // 'admin' ou 'user'
+  var users = [];           // [{username, passwordHash, role}]
+  var usersSha = null;
+
+  var DEFAULT_ADMIN_USERNAME = 'clement.thieuleux';
+  var DEFAULT_ADMIN_PASSWORD = 'azerty';
+
+  // Si un compte n'a pas de prénom/nom enregistré, on en déduit un raisonnable
+  // à partir de l'identifiant (ex: "jean.dupont" -> "Jean Dupont").
+  function deriveNameFromUsername(username){
+    var parts = (username || '').split(/[._\-\s]+/).filter(Boolean);
+    if(parts.length >= 2){
+      return parts.map(function(p){ return p.charAt(0).toUpperCase() + p.slice(1); }).join(' ');
+    }
+    return username;
+  }
+  function getUserFullName(username){
+    var u = users.find(function(x){ return x.username === username; });
+    if(u && (u.firstName || u.lastName)){
+      return ((u.firstName || '') + ' ' + (u.lastName || '')).trim();
+    }
+    return deriveNameFromUsername(username);
+  }
+
+  async function sha256Hex(text){
+    var enc = new TextEncoder().encode(text);
+    var buf = await crypto.subtle.digest('SHA-256', enc);
+    return Array.from(new Uint8Array(buf)).map(function(b){
+      return b.toString(16).padStart(2,'0');
+    }).join('');
+  }
+
+  function usersApiUrl(){ return CONFIG.WORKER_URL.replace('/signalements', '/users'); }
+
+  function fetchUsers(){
+    return fetch(usersApiUrl(), {
+      method: 'GET',
+      headers: { 'X-App-Secret': CONFIG.APP_SECRET }
+    })
+    .then(function(r){
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(data){
+      users = data.items || [];
+      usersSha = data.sha || null;
+      return users;
+    });
+  }
+
+  function saveUsers(){
+    return fetch(usersApiUrl(), {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-App-Secret': CONFIG.APP_SECRET
+      },
+      body: JSON.stringify({ items: users, sha: usersSha })
+    })
+    .then(function(r){
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(data){ usersSha = data.sha; });
+  }
+
+  // ================= TRACÉS PARTAGÉS (voir où les autres sont passés) =================
+  function tracksApiUrl(){ return CONFIG.WORKER_URL.replace('/signalements', '/tracks'); }
+
+  async function syncTracks(){
+    if(!currentUser) return;
+    try{
+      var resp = await fetch(tracksApiUrl(), {
+        method: 'GET',
+        headers: { 'X-App-Secret': CONFIG.APP_SECRET }
+      });
+      if(!resp.ok) throw new Error('HTTP ' + resp.status);
+      var data = await resp.json();
+      var tracks = data.items || [];
+      var sha = data.sha || null;
+
+      var mine = tracks.find(function(t){ return t.username === currentUser; });
+
+      // Si le serveur a déjà plus de points que ce qu'on a en mémoire (nouvelle
+      // session, ou suivi déjà démarré depuis un autre appareil), on reprend
+      // cet historique comme base au lieu de repartir de zéro — c'est ce qui
+      // garantit que les trajets s'accumulent dans le temps sans jamais être
+      // écrasés par une session vide.
+      if(mine && mine.points && mine.points.length > sharedTrackPoints.length){
+        sharedTrackPoints = mine.points.slice();
+        lastSyncedPointCount = sharedTrackPoints.length;
+        if(sharedTrackPoints.length){
+          lastSharedPoint = sharedTrackPoints[sharedTrackPoints.length - 1];
+        }
+      }
+
+      // Si on a de nouveaux points à partager (au-delà de ce qui est déjà connu), on met à jour notre entrée
+      if(sharedTrackPoints.length > lastSyncedPointCount){
+        if(mine){
+          mine.points = sharedTrackPoints;
+          mine.updatedAt = new Date().toISOString();
+        } else {
+          tracks.push({ username: currentUser, points: sharedTrackPoints.slice(), updatedAt: new Date().toISOString() });
+        }
+        var putResp = await fetch(tracksApiUrl(), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'X-App-Secret': CONFIG.APP_SECRET },
+          body: JSON.stringify({ items: tracks, sha: sha })
+        });
+        if(putResp.ok){
+          lastSyncedPointCount = sharedTrackPoints.length;
+        }
+      }
+
+      renderOtherTracks(tracks);
+    } catch(e){
+      console.warn('Erreur synchronisation des tracés', e);
+    }
+  }
+
+  var TRACK_COLORS = ['#1c6fd9', '#7a4fd1', '#c98a1f', '#2f9e8f', '#d1477a', '#5c8a5c'];
+
+  function renderOtherTracks(tracks){
+    otherTracksLayer.clearLayers();
+    var idx = 0;
+    tracks.forEach(function(t){
+      if(t.username === currentUser) return;
+      if(!t.points || t.points.length < 2) return;
+      var color = TRACK_COLORS[idx % TRACK_COLORS.length];
+      idx++;
+      var line = L.polyline(t.points, { color: color, weight: 4, opacity: 0.65, dashArray: '6 6' });
+      var lastSeen = t.updatedAt ? new Date(t.updatedAt).toLocaleTimeString('fr-FR') : '';
+      line.bindTooltip(escapeHtml(t.username) + (lastSeen ? ' · vu ' + lastSeen : ''), { sticky: true });
+      line.addTo(otherTracksLayer);
+    });
+  }
+
+  var trackSyncIntervalId = null;
+
+  function startTrackSync(){
+    syncTracks();
+    trackSyncIntervalId = setInterval(syncTracks, TRACK_SYNC_INTERVAL);
+  }
+
+  // ================= SIGNALEMENTS CITOYENS (à valider) =================
+  function citizenApiUrl(){ return CONFIG.WORKER_URL.replace('/signalements', '/citizen'); }
+  var citizenReports = [];
+  var citizenSha = null;
+  var citizenSyncIntervalId = null;
+
+  var citizenSaveInFlight = false;
+
+  function loadCitizenReports(silent){
+    if(citizenSaveInFlight) return Promise.resolve(); // évite d'écraser une sauvegarde en cours
+    return fetch(citizenApiUrl(), {
+      method: 'GET',
+      headers: { 'X-App-Secret': CONFIG.APP_SECRET }
+    })
+    .then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(function(data){
+      if(citizenSaveInFlight) return; // une sauvegarde a démarré pendant la requête : on ignore ce résultat périmé
+      citizenReports = data.items || [];
+      citizenSha = data.sha || null;
+      updateCitizenBadge();
+      renderList();
+      renderCitizenMarkers();
+    })
+    .catch(function(e){ console.warn('Erreur chargement signalements citoyens', e); });
+  }
+
+  function saveCitizenReports(){
+    citizenSaveInFlight = true;
+    return fetch(citizenApiUrl(), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-App-Secret': CONFIG.APP_SECRET },
+      body: JSON.stringify({ items: citizenReports, sha: citizenSha })
+    })
+    .then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(function(data){ citizenSha = data.sha; })
+    .finally(function(){ citizenSaveInFlight = false; });
+  }
+
+  function updateCitizenBadge(){
+    var pending = citizenReports.filter(function(r){ return r.status === 'nouveau'; }).length;
+    var badge = document.getElementById('listBadge');
+    if(pending > 0){
+      badge.textContent = pending;
+      badge.classList.add('show');
+    } else {
+      badge.classList.remove('show');
+    }
+  }
+
+  // Rend la section "signalements citoyens en attente" DANS le même conteneur
+  // que la liste officielle (#listContent), pour éviter d'avoir un bouton et un
+  // panneau séparés qui prêtaient à confusion.
+  var showCitizenHistory = false;
+  var showSCPendingList = true;
+
+  function renderCitizenSection(){
+    var pending = citizenReports.filter(function(r){ return r.status === 'nouveau'; })
+      .sort(function(a,b){ return new Date(b.date) - new Date(a.date); });
+    var processed = citizenReports.filter(function(r){ return r.status === 'valide' || r.status === 'rejete'; })
+      .sort(function(a,b){ return new Date(b.processedAt || b.date) - new Date(a.processedAt || a.date); });
+
+    var html = '';
+
+    html += '<div id="btnToggleSCList" style="margin:18px 0 10px;padding:10px 12px;border:2px solid var(--ink);border-radius:10px;background:var(--paper);cursor:pointer;">' +
+      '<b style="font-size:14px;">' + (showSCPendingList ? '▾' : '▸') + ' 🧑 Signalements citoyens à valider (' + pending.length + ')</b>' +
+      '</div>';
+
+    if(showSCPendingList){
+      if(pending.length === 0){
+        html += '<p style="color:var(--muted);font-size:13px;margin:0 0 10px;">Aucun signalement citoyen en attente pour l\'instant.</p>';
+      } else {
+        html += pending.map(function(r){
+          var fullName = ((r.firstName || '') + ' ' + (r.lastName || '')).trim() || 'Anonyme';
+          return '<div class="citizen-row">' +
+            '<div class="meta"><b>' + escapeHtml(r.refNumber || r.id) + '</b> · ' + new Date(r.date).toLocaleString('fr-FR') + '</div>' +
+            '<div class="meta">' + escapeHtml(fullName) + (r.email ? ' · ' + escapeHtml(r.email) : '') + '</div>' +
+            '<div class="meta">Quantité : ' + escapeHtml(r.quantity || '—') + ' · ' + r.lat.toFixed(5) + ', ' + r.lon.toFixed(5) + '</div>' +
+            (r.note ? '<div class="note">Note : ' + escapeHtml(r.note) + '</div>' : '') +
+            (r.photo ? '<button type="button" class="btn" data-viewphotocit="' + r.id + '" style="display:inline-block;margin:6px 0;padding:8px 12px;font-size:12px;font-weight:700;">📷 Voir la photo</button><br>' : '') +
+            '<div class="row-actions">' +
+              '<button class="btn" data-cgoto="' + r.id + '" style="flex:1;padding:8px;font-size:11px;">Carte</button>' +
+              '<button class="btn primary" data-cvalidate="' + r.id + '" style="flex:1;padding:8px;font-size:11px;">Valider et transférer</button>' +
+              '<button class="btn" data-creject="' + r.id + '" style="flex:1;padding:8px;font-size:11px;color:var(--danger);border-color:var(--danger);">Rejeter</button>' +
+            '</div>' +
+          '</div>';
+        }).join('');
+      }
+    }
+
+    if(processed.length > 0){
+      html += '<div id="btnToggleCitizenHistory" style="margin:14px 0 10px;padding:10px 12px;border:2px solid var(--ink);border-radius:10px;background:var(--paper);cursor:pointer;">' +
+        '<b style="font-size:14px;">' + (showCitizenHistory ? '▾' : '▸') + ' 🕓 Historique citoyens traités (' + processed.length + ')</b>' +
+      '</div>';
+
+      if(showCitizenHistory){
+        html += processed.map(function(r){
+          var fullName = ((r.firstName || '') + ' ' + (r.lastName || '')).trim() || 'Anonyme';
+          var isValide = r.status === 'valide';
+          var actionLabel = isValide ? 'Validé et transféré' : 'Rejeté';
+          var byWhom = r.processedBy ? escapeHtml(r.processedBy) : 'inconnu';
+          var whenProcessed = r.processedAt ? new Date(r.processedAt).toLocaleString('fr-FR') : '—';
+          return '<div class="citizen-row" style="opacity:0.85;">' +
+            '<span class="status-pill' + (isValide ? ' done' : ' erreur') + '">' + actionLabel + '</span>' +
+            '<div class="meta"><b>' + escapeHtml(r.refNumber || r.id) + '</b> · signalé le ' + new Date(r.date).toLocaleString('fr-FR') + '</div>' +
+            '<div class="meta">' + escapeHtml(fullName) + (r.email ? ' · ' + escapeHtml(r.email) : '') + '</div>' +
+            '<div class="meta">' + actionLabel + ' par <b>' + byWhom + '</b> le ' + whenProcessed + '</div>' +
+            '<div class="row-actions">' +
+              '<button class="btn" data-cgoto="' + r.id + '" style="flex:1;padding:8px;font-size:11px;">Carte</button>' +
+            '</div>' +
+          '</div>';
+        }).join('');
+      }
+    }
+
+    return html;
+  }
+
+  // Propose au conseiller d'envoyer un email de suivi au citoyen (si une adresse
+  // a été renseignée), en ouvrant son client mail habituel (Mail, Thunderbird,
+  // Gmail...) avec le destinataire, l'objet et le message déjà prêts.
+  function offerEmailNotification(r){
+    if(!r.email) return;
+    var confirmed = confirm(
+      'Un email est associé à ce signalement (' + r.email + ').\n\n' +
+      'Voulez-vous ouvrir votre messagerie pour envoyer un email de confirmation au citoyen ?'
+    );
+    if(!confirmed) return;
+
+    var subject = 'Suivi de votre signalement d\'ambroisie (' + (r.refNumber || '') + ')';
+    var body =
+      'Bonjour ' + (r.firstName || '') + ',\n\n' +
+      'Nous vous confirmons la bonne prise en compte de votre signalement d\'ambroisie (référence ' + (r.refNumber || '') + '), transmis le ' + new Date(r.date).toLocaleDateString('fr-FR') + '.\n\n' +
+      'Votre signalement a été validé et transmis pour traitement.\n\n' +
+      'Nous vous remercions pour votre vigilance.\n\n' +
+      'Cordialement,\n' +
+      getUserFullName(currentUser) + ', pour la mairie de Belsentes';
+
+    var mailtoUrl = 'mailto:' + encodeURIComponent(r.email) +
+      '?subject=' + encodeURIComponent(subject) +
+      '&body=' + encodeURIComponent(body);
+    window.open(mailtoUrl, '_blank');
+  }
+
+  function wireCitizenSectionButtons(content){
+    var toggleHistBtn = content.querySelector('#btnToggleCitizenHistory');
+    if(toggleHistBtn){
+      toggleHistBtn.addEventListener('click', function(){
+        showCitizenHistory = !showCitizenHistory;
+        renderList();
+      });
+    }
+    var toggleSCBtn = content.querySelector('#btnToggleSCList');
+    if(toggleSCBtn){
+      toggleSCBtn.addEventListener('click', function(){
+        showSCPendingList = !showSCPendingList;
+        renderList();
+      });
+    }
+    content.querySelectorAll('[data-viewphotocit]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var r = citizenReports.find(function(x){ return x.id === btn.getAttribute('data-viewphotocit'); });
+        if(r && r.photo) openPhotoInNewTab(r.photo);
+      });
+    });
+    content.querySelectorAll('[data-cgoto]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var r = citizenReports.find(function(x){ return x.id === btn.getAttribute('data-cgoto'); });
+        if(r){
+          document.getElementById('listModal').classList.add('hidden');
+          following = false; updateFollowBtn();
+          map.setView([r.lat, r.lon], 17, { animate:true });
+        }
+      });
+    });
+    content.querySelectorAll('[data-cvalidate]').forEach(function(btn){
+      btn.addEventListener('click', async function(){
+        var id = btn.getAttribute('data-cvalidate');
+        var r = citizenReports.find(function(x){ return x.id === id; });
+        if(!r) return;
+        btn.disabled = true;
+        btn.textContent = 'Validation…';
+        var fullName = ((r.firstName || '') + ' ' + (r.lastName || '')).trim() || 'Anonyme';
+        var nowIsoTransfer = new Date().toISOString();
+        var entry = {
+          id: 'sig_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
+          refNumber: generateSMRefNumber(),
+          lat: r.lat,
+          lon: r.lon,
+          name: fullName,
+          quantity: r.quantity,
+          note: r.note || null,
+          photo: r.photo || null,
+          date: r.date,
+          classification: 'valide',
+          traite: false,
+          isErreur: false,
+          fromCitizenId: r.id,
+          fromCitizenRefNumber: r.refNumber || null,
+          citizenFirstName: r.firstName || null,
+          citizenLastName: r.lastName || null,
+          citizenEmail: r.email || null,
+          createdBy: getUserFullName(currentUser),
+          createdAt: nowIsoTransfer,
+          lastModifiedBy: getUserFullName(currentUser),
+          lastModifiedAt: nowIsoTransfer
+        };
+        signalements.push(entry);
+        r.status = 'valide';
+        r.processedBy = getUserFullName(currentUser);
+        r.processedAt = new Date().toISOString();
+        r.transferredToId = entry.id;
+        renderSignalMarkers();
+        renderList();
+        updateCitizenBadge();
+        renderCitizenMarkers();
+        document.getElementById('quickEditModal').classList.add('hidden');
+
+        // On attend que la sauvegarde soit réellement confirmée par le serveur
+        // avant de continuer, pour éviter qu'un rechargement automatique
+        // concurrent n'écrase ce changement avec une version pas encore à jour
+        // (c'est ce qui provoquait le signalement citoyen qui "revenait" en
+        // attente, avec un doublon du signalement officiel créé à côté).
+        citizenSaveInFlight = true;
+        try{
+          await saveSignalements();
+          await saveCitizenReports();
+        } catch(e){
+          console.warn('Erreur lors de la sauvegarde de la validation', e);
+        } finally {
+          citizenSaveInFlight = false;
+        }
+
+        offerEmailNotification(r);
+
+        // Ouvre directement la fiche du nouveau signalement officiel créé,
+        // pour permettre au conseiller de compléter/vérifier tout de suite.
+        following = false; updateFollowBtn();
+        map.setView([entry.lat, entry.lon], 17, { animate:true });
+        openSignalQuickEdit(entry.id);
+      });
+    });
+    content.querySelectorAll('[data-creject]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var id = btn.getAttribute('data-creject');
+        var r = citizenReports.find(function(x){ return x.id === id; });
+        if(!r) return;
+        if(!confirm('Rejeter ce signalement citoyen ? Il ne sera pas transféré et disparaîtra de la carte publique.')) return;
+        r.status = 'rejete';
+        r.processedBy = getUserFullName(currentUser);
+        r.processedAt = new Date().toISOString();
+        renderList();
+        updateCitizenBadge();
+        renderCitizenMarkers();
+        document.getElementById('quickEditModal').classList.add('hidden');
+        saveCitizenReports();
+      });
+    });
+  }
+
+  function startCitizenSync(){
+    loadCitizenReports();
+    citizenSyncIntervalId = setInterval(function(){ loadCitizenReports(true); }, 20000);
+  }
+
+  async function initAuth(){
+    var savedUser = localStorage.getItem('ambroisie_user');
+    var savedRole = localStorage.getItem('ambroisie_role');
+
+    // Charger la liste des comptes ; si elle n'existe pas encore, créer le compte admin par défaut
+    try{
+      await fetchUsers();
+      if(users.length === 0){
+        var hash = await sha256Hex(DEFAULT_ADMIN_PASSWORD);
+        var derived = deriveNameFromUsername(DEFAULT_ADMIN_USERNAME).split(' ');
+        users = [{ username: DEFAULT_ADMIN_USERNAME, passwordHash: hash, role: 'admin', firstName: derived[0] || '', lastName: derived.slice(1).join(' ') || '' }];
+        await saveUsers();
+      }
+    } catch(e){
+      console.error('Erreur chargement comptes', e);
+      document.getElementById('loginErr').textContent =
+        'Impossible de contacter le serveur de comptes. Vérifiez votre connexion.';
+    }
+
+    if(savedUser && savedRole){
+      currentUser = savedUser;
+      currentRole = savedRole;
+      document.getElementById('loginScreen').classList.add('hidden');
+      setupAccountUI();
+      return;
+    }
+    document.getElementById('btnLogin').addEventListener('click', tryLogin);
+    document.getElementById('loginPass').addEventListener('keydown', function(e){
+      if(e.key === 'Enter') tryLogin();
+    });
+  }
+
+  async function tryLogin(){
+    var name = document.getElementById('loginName').value.trim();
+    var pass = document.getElementById('loginPass').value;
+    var err = document.getElementById('loginErr');
+    err.textContent = '';
+    if(!name || !pass){ err.textContent = 'Identifiant et mot de passe requis.'; return; }
+
+    var hash = await sha256Hex(pass);
+    var found = users.find(function(u){ return u.username === name && u.passwordHash === hash; });
+    if(!found){ err.textContent = 'Identifiant ou mot de passe incorrect.'; return; }
+
+    currentUser = found.username;
+    currentRole = found.role;
+    localStorage.setItem('ambroisie_user', currentUser);
+    localStorage.setItem('ambroisie_role', currentRole);
+    document.getElementById('loginScreen').classList.add('hidden');
+    setupAccountUI();
+  }
+
+  function logout(){
+    localStorage.removeItem('ambroisie_user');
+    localStorage.removeItem('ambroisie_role');
+    if(trackSyncIntervalId){ clearInterval(trackSyncIntervalId); trackSyncIntervalId = null; }
+    if(signalSyncIntervalId){ clearInterval(signalSyncIntervalId); signalSyncIntervalId = null; }
+    if(citizenSyncIntervalId){ clearInterval(citizenSyncIntervalId); citizenSyncIntervalId = null; }
+    currentUser = null;
+    currentRole = null;
+    document.getElementById('accountModal').classList.add('hidden');
+    document.getElementById('loginName').value = '';
+    document.getElementById('loginPass').value = '';
+    document.getElementById('loginErr').textContent = '';
+    document.getElementById('loginScreen').classList.remove('hidden');
+  }
+
+  // ================= COMPTE / ADMIN =================
+  function setupAccountUI(){
+    document.getElementById('accountWhoami').textContent = currentUser + (currentRole === 'admin' ? ' (administrateur)' : '');
+    document.getElementById('adminSection').style.display = currentRole === 'admin' ? 'block' : 'none';
+    if(currentRole === 'admin') renderUserList();
+    startTrackSync();
+    startSignalSync();
+    startCitizenSync();
+  }
+
+  document.getElementById('btnAccount').addEventListener('click', function(){
+    document.getElementById('accountErr').textContent = '';
+    document.getElementById('newPassword').value = '';
+    document.getElementById('newUserName').value = '';
+    document.getElementById('newUserPass').value = '';
+    if(currentRole === 'admin') renderUserList();
+    document.getElementById('accountModal').classList.remove('hidden');
+  });
+  document.getElementById('btnCancelAccount').addEventListener('click', function(){
+    document.getElementById('accountModal').classList.add('hidden');
+  });
+
+  document.getElementById('btnBackfillRefNumbers').addEventListener('click', async function(){
+    var missing = signalements.filter(function(s){ return !s.refNumber; });
+    if(missing.length === 0){
+      alert('Tous les signalements ont déjà un numéro de référence.');
+      return;
+    }
+    if(!confirm(missing.length + ' signalement(s) sans numéro. Leur attribuer un numéro maintenant ?')) return;
+    missing.forEach(function(s){
+      s.refNumber = generateSMRefNumber();
+    });
+    renderList();
+    var btn = document.getElementById('btnBackfillRefNumbers');
+    btn.disabled = true;
+    btn.textContent = 'Enregistrement…';
+    try{
+      await saveSignalements();
+      alert('Numéros attribués avec succès à ' + missing.length + ' signalement(s).');
+    } catch(e){
+      alert('Erreur lors de l\'enregistrement. Réessayez.');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Attribuer les numéros manquants';
+    }
+  });
+
+  document.getElementById('btnBackfillCitizenRefNumbers').addEventListener('click', async function(){
+    var missing = citizenReports.filter(function(r){ return !r.refNumber; });
+    if(missing.length === 0){
+      alert('Tous les signalements citoyens ont déjà un numéro de référence.');
+      return;
+    }
+    if(!confirm(missing.length + ' signalement(s) citoyen(s) sans numéro. Leur attribuer un numéro maintenant ?')) return;
+    missing.forEach(function(r){
+      r.refNumber = generateCitizenRefNumberFallback();
+    });
+    renderList();
+    var btn = document.getElementById('btnBackfillCitizenRefNumbers');
+    btn.disabled = true;
+    btn.textContent = 'Enregistrement…';
+    try{
+      await saveCitizenReports();
+      alert('Numéros attribués avec succès à ' + missing.length + ' signalement(s) citoyen(s).');
+    } catch(e){
+      alert('Erreur lors de l\'enregistrement. Réessayez.');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Attribuer les numéros AMB manquants';
+    }
+  });
+
+  document.getElementById('btnReconcileCitizens').addEventListener('click', async function(){
+    var validated = citizenReports.filter(function(r){ return r.status === 'valide'; });
+    var repaired = [];
+    var broken = [];
+
+    validated.forEach(function(r){
+      if(r.transferredToId){
+        // Vérifie que le signalement officiel référencé existe TOUJOURS
+        // (il a pu être supprimé depuis, avant l'ajout du nettoyage automatique).
+        var stillExists = signalements.some(function(s){ return s.id === r.transferredToId; });
+        if(stillExists) return; // correctement lié, rien à faire
+        broken.push(r);
+        return;
+      }
+      // Cherche un signalement officiel qui référence bien ce citoyen
+      // (cas d'anciens transferts faits avant l'ajout de ce suivi).
+      var match = signalements.find(function(s){ return s.fromCitizenId === r.id; });
+      if(match){
+        r.transferredToId = match.id;
+        repaired.push(r);
+      } else {
+        broken.push(r);
+      }
+    });
+
+    if(repaired.length === 0 && broken.length === 0){
+      alert('Tout est cohérent : aucun signalement citoyen "validé" en anomalie.');
+      return;
+    }
+
+    var msg = '';
+    if(repaired.length > 0) msg += repaired.length + ' lien(s) réparé(s) automatiquement (le signalement officiel existait bien).\n';
+    if(broken.length > 0){
+      msg += broken.length + ' signalement(s) citoyen(s) marqué(s) "validé" SANS signalement officiel existant (supprimé ou jamais créé) :\n' +
+        broken.map(function(r){ return '- ' + (r.refNumber || r.id); }).join('\n') +
+        '\n\nLes remettre "en attente" pour permettre un nouveau transfert ?';
+    }
+    if(!confirm(msg)) {
+      if(repaired.length > 0) saveCitizenReports();
+      return;
+    }
+
+    broken.forEach(function(r){
+      r.status = 'nouveau';
+      delete r.transferredToId;
+      delete r.processedBy;
+      delete r.processedAt;
+    });
+
+    var btnReconcile = document.getElementById('btnReconcileCitizens');
+    btnReconcile.disabled = true;
+    btnReconcile.textContent = 'Enregistrement…';
+    try{
+      await saveCitizenReports();
+      renderList();
+      updateCitizenBadge();
+      renderCitizenMarkers();
+      alert('Réconciliation terminée.');
+    } catch(e){
+      alert('Erreur lors de l\'enregistrement. Réessayez.');
+    } finally {
+      btnReconcile.disabled = false;
+      btnReconcile.textContent = 'Vérifier la cohérence';
+    }
+  });
+
+  document.getElementById('btnResetCitizens').addEventListener('click', async function(){
+    var count = citizenReports.length;
+    if(count === 0){
+      alert('Il n\'y a déjà aucun signalement citoyen enregistré.');
+      return;
+    }
+    var step1 = confirm(
+      '⚠️ Ceci va supprimer DÉFINITIVEMENT les ' + count + ' signalement(s) citoyen(s) enregistré(s) ' +
+      '(en attente, validés et rejetés confondus).\n\n' +
+      'Les signalements officiels mairie (SM) ne seront PAS touchés.\n\n' +
+      'Continuer ?'
+    );
+    if(!step1) return;
+    var step2 = confirm('Dernière confirmation : remettre à zéro tous les signalements citoyens ? Cette action est irréversible.');
+    if(!step2) return;
+
+    var btn = document.getElementById('btnResetCitizens');
+    btn.disabled = true;
+    btn.textContent = 'Remise à zéro…';
+    citizenReports = [];
+    renderList();
+    updateCitizenBadge();
+    renderCitizenMarkers();
+    try{
+      await saveCitizenReports();
+      alert('Les signalements citoyens ont été remis à zéro. Les signalements mairie (SM) sont inchangés.');
+    } catch(e){
+      alert('Erreur lors de l\'enregistrement. Réessayez.');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Remettre à zéro les signalements citoyens';
+    }
+  });
+
+  document.getElementById('btnShowAbout').addEventListener('click', function(){
+    document.getElementById('aboutModal').classList.remove('hidden');
+  });
+  document.getElementById('btnCloseAbout').addEventListener('click', function(){
+    document.getElementById('aboutModal').classList.add('hidden');
+  });
+  document.getElementById('btnCloseAboutX').addEventListener('click', function(){
+    document.getElementById('aboutModal').classList.add('hidden');
+  });
+
+  document.getElementById('btnLogout').addEventListener('click', function(){
+    if(confirm('Se déconnecter ? Vous devrez ressaisir votre identifiant et mot de passe.')){
+      logout();
+    }
+  });
+
+  document.getElementById('btnChangePassword').addEventListener('click', async function(){
+    var np = document.getElementById('newPassword').value;
+    var err = document.getElementById('accountErr');
+    if(!np || np.length < 4){ err.textContent = 'Choisissez un mot de passe d\'au moins 4 caractères.'; return; }
+    var me = users.find(function(u){ return u.username === currentUser; });
+    if(!me){ err.textContent = 'Compte introuvable.'; return; }
+    me.passwordHash = await sha256Hex(np);
+    try{
+      await saveUsers();
+      err.style.color = 'var(--line)';
+      err.textContent = 'Mot de passe mis à jour.';
+    } catch(e){
+      err.style.color = '';
+      err.textContent = 'Erreur lors de l\'enregistrement.';
+    }
+  });
+
+  function renderUserList(){
+    var box = document.getElementById('userListContent');
+    box.innerHTML = users.map(function(u){
+      var canDelete = u.username !== currentUser && !(u.role === 'admin' && users.filter(function(x){return x.role==='admin';}).length <= 1);
+      return '<div class="user-row">' +
+        '<span>' + escapeHtml(getUserFullName(u.username)) + ' (' + escapeHtml(u.username) + ') <span class="role-tag">' + (u.role === 'admin' ? 'Admin' : 'Conseiller') + '</span></span>' +
+        (canDelete ? '<button data-del="' + escapeHtml(u.username) + '">Supprimer</button>' : '') +
+      '</div>';
+    }).join('');
+    box.querySelectorAll('[data-del]').forEach(function(btn){
+      btn.addEventListener('click', async function(){
+        var uname = btn.getAttribute('data-del');
+        if(!confirm('Supprimer l\'utilisateur ' + uname + ' ?')) return;
+        users = users.filter(function(u){ return u.username !== uname; });
+        try{ await saveUsers(); renderUserList(); }
+        catch(e){ alert('Erreur lors de la suppression.'); }
+      });
+    });
+  }
+
+  document.getElementById('btnAddUser').addEventListener('click', async function(){
+    var uname = document.getElementById('newUserName').value.trim();
+    var upass = document.getElementById('newUserPass').value;
+    var ufirst = document.getElementById('newUserFirstName').value.trim();
+    var ulast = document.getElementById('newUserLastName').value.trim();
+    var err = document.getElementById('accountErr');
+    if(!uname || !upass || !ufirst || !ulast){ err.textContent = 'Prénom, nom, identifiant et mot de passe requis.'; return; }
+    if(users.find(function(u){ return u.username === uname; })){ err.textContent = 'Cet identifiant existe déjà.'; return; }
+    var hash = await sha256Hex(upass);
+    users.push({ username: uname, passwordHash: hash, role: 'user', firstName: ufirst, lastName: ulast });
+    try{
+      await saveUsers();
+      document.getElementById('newUserName').value = '';
+      document.getElementById('newUserPass').value = '';
+      document.getElementById('newUserFirstName').value = '';
+      document.getElementById('newUserLastName').value = '';
+      err.style.color = 'var(--line)';
+      err.textContent = 'Utilisateur créé.';
+      renderUserList();
+    } catch(e){
+      err.style.color = '';
+      err.textContent = 'Erreur lors de la création.';
+    }
+  });
+
+  // ================= STOCKAGE PARTAGÉ (via Cloudflare Worker) =================
+  var signalements = [];
+  var ghFileSha = null; // nécessaire pour mettre à jour sans écraser en conflit
 
   function showSync(msg){
     var b = document.getElementById('syncBadge');
     b.textContent = msg;
     b.classList.add('show');
   }
-  function hideSync(){ document.getElementById('syncBadge').classList.remove('show'); }
+  function hideSync(){
+    document.getElementById('syncBadge').classList.remove('show');
+  }
+
+  var signalSaveInFlight = false;
+
+  function loadSignalements(silent){
+    if(signalSaveInFlight) return; // évite d'écraser une sauvegarde en cours
+    if(!silent) showSync('Synchronisation…');
+    fetch(CONFIG.WORKER_URL, {
+      method: 'GET',
+      headers: { 'X-App-Secret': CONFIG.APP_SECRET }
+    })
+    .then(function(r){
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(data){
+      if(signalSaveInFlight) return; // sauvegarde démarrée entre-temps : résultat périmé, on l'ignore
+      signalements = data.items || [];
+      ghFileSha = data.sha || null;
+      renderSignalMarkers();
+      renderList();
+      if(!silent) hideSync();
+    })
+    .catch(function(e){
+      console.error('Erreur chargement signalements', e);
+      if(!silent){
+        hideSync();
+        showSync('Hors ligne — données locales uniquement');
+        setTimeout(hideSync, 3000);
+      }
+    });
+  }
+
+  var SIGNAL_SYNC_INTERVAL = 15000; // 15s
+  var signalSyncIntervalId = null;
+
+  function startSignalSync(){
+    signalSyncIntervalId = setInterval(function(){ loadSignalements(true); }, SIGNAL_SYNC_INTERVAL);
+  }
+
+  function saveSignalements(){
+    showSync('Enregistrement…');
+    signalSaveInFlight = true;
+    return fetch(CONFIG.WORKER_URL, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-App-Secret': CONFIG.APP_SECRET
+      },
+      body: JSON.stringify({ items: signalements, sha: ghFileSha })
+    })
+    .then(function(r){
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(data){
+      ghFileSha = data.sha;
+      hideSync();
+    })
+    .catch(function(e){
+      console.error('Erreur sauvegarde', e);
+      hideSync();
+      alert('Impossible d\'enregistrer. Vérifiez votre connexion. Le signalement reste visible localement pour l\'instant.');
+    })
+    .finally(function(){
+      signalSaveInFlight = false;
+    });
+  }
+
+  // ================= MARQUEURS DE SIGNALEMENT =================
+  var signalMarkersLayer = L.layerGroup();
+  var pendingReportCoords = null;
+
+  // Classification transmise à FREDON, indépendante du fait que l'ambroisie
+  // ait été physiquement traitée ou non (voir getTraite) et du marquage erreur.
+  var CLASSIFICATIONS = {
+    'valide':        { label: 'Validé',           color: '#2f6b3a' },
+    'en_cours':      { label: 'En cours',         color: '#c98a1f' },
+    'doublon':       { label: 'Doublon',          color: '#5c6bd6' },
+    'pas_ambroisie': { label: "Pas d'ambroisie",  color: '#8a8a8a' }
+  };
+
+  // Compatibilité avec les anciens signalements enregistrés avant l'ajout de
+  // ce système (qui utilisaient un simple champ status: 'a_traiter'/'traite'/'erreur').
+  function getClassification(s){ return s.classification || 'valide'; }
+  function getTraite(s){ return s.traite !== undefined ? s.traite : (s.status === 'traite'); }
+  function getErreur(s){ return s.isErreur !== undefined ? s.isErreur : (s.status === 'erreur'); }
+
+  function signalIcon(entry){
+    var clsInfo = CLASSIFICATIONS[getClassification(entry)] || CLASSIFICATIONS['valide'];
+    var opacity = getTraite(entry) ? 0.45 : 1;
+    return L.divIcon({
+      className: '',
+      html: '<div class="signal-icon" style="background:' + clsInfo.color + ';opacity:' + opacity + ';"></div>',
+      iconSize: [26,26],
+      iconAnchor: [13,26]
+    });
+  }
+
+  function renderSignalMarkers(){
+    signalMarkersLayer.clearLayers();
+    signalements.forEach(function(s){
+      // Les signalements marqués "erreur" (faux positif) sont masqués de la carte,
+      // mais restent consultables dans l'onglet dédié de la liste.
+      if(getErreur(s)) return;
+      var m = L.marker([s.lat, s.lon], { icon: signalIcon(s) });
+      m.on('click', function(){ openSignalQuickEdit(s.id); });
+      m.addTo(signalMarkersLayer);
+    });
+  }
+  signalMarkersLayer.addTo(map);
+
+  function openSignalQuickEdit(id){
+    refreshQuickEdit(id);
+    document.getElementById('quickEditModal').classList.remove('hidden');
+  }
+
+  // ---- Marqueurs des signalements citoyens en attente (couleur distincte) ----
+  var citizenMarkersLayer = L.layerGroup().addTo(map);
+  var CITIZEN_PENDING_COLOR = '#c9268a';
+
+  function citizenIcon(){
+    return L.divIcon({
+      className: '',
+      html: '<div style="width:24px;height:24px;border-radius:50% 50% 50% 0;background:' + CITIZEN_PENDING_COLOR + ';border:2px solid #fff;transform:rotate(-45deg);box-shadow:1px 2px 3px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;"><span style="transform:rotate(45deg);font-size:11px;">🧑</span></div>',
+      iconSize: [24,24],
+      iconAnchor: [12,24]
+    });
+  }
+
+  function renderCitizenMarkers(){
+    citizenMarkersLayer.clearLayers();
+    citizenReports.forEach(function(r){
+      if(r.status !== 'nouveau') return; // déjà validé ou rejeté : plus besoin de le montrer
+      var m = L.marker([r.lat, r.lon], { icon: citizenIcon() });
+      m.on('click', function(){ openCitizenQuickEdit(r.id); });
+      m.addTo(citizenMarkersLayer);
+    });
+  }
+
+  function openCitizenQuickEdit(id){
+    var r = citizenReports.find(function(x){ return x.id === id; });
+    if(!r) return;
+    var box = document.getElementById('quickEditContent');
+    var fullName = ((r.firstName || '') + ' ' + (r.lastName || '')).trim() || 'Anonyme';
+    box.innerHTML = '<div class="citizen-row">' +
+      '<div class="meta"><b>' + escapeHtml(r.refNumber || r.id) + '</b> · ' + new Date(r.date).toLocaleString('fr-FR') + '</div>' +
+      '<div class="meta">' + escapeHtml(fullName) + (r.email ? ' · ' + escapeHtml(r.email) : '') + '</div>' +
+      '<div class="meta">Quantité : ' + escapeHtml(r.quantity || '—') + ' · ' + r.lat.toFixed(5) + ', ' + r.lon.toFixed(5) + '</div>' +
+      (r.note ? '<div class="note">Note : ' + escapeHtml(r.note) + '</div>' : '') +
+      (r.photo ? '<button type="button" class="btn" data-viewphotocit="' + r.id + '" style="display:inline-block;margin:6px 0;padding:8px 12px;font-size:12px;font-weight:700;">📷 Voir la photo</button><br>' : '') +
+      '<div class="row-actions">' +
+        '<button class="btn primary" data-cvalidate="' + r.id + '" style="flex:1;padding:8px;font-size:11px;">Valider et transférer</button>' +
+        '<button class="btn" data-creject="' + r.id + '" style="flex:1;padding:8px;font-size:11px;color:var(--danger);border-color:var(--danger);">Rejeter</button>' +
+      '</div>' +
+    '</div>';
+    wireCitizenSectionButtons(box);
+    document.getElementById('quickEditModal').classList.remove('hidden');
+  }
+
+  // Ouvre une photo (stockée en base64) dans un nouvel onglet de façon fiable.
+  // Chrome et d'autres navigateurs bloquent la navigation directe vers une URL
+  // "data:" dans un nouvel onglet (page blanche "Sans titre") ; on convertit
+  // donc d'abord en Blob, ce qui fonctionne correctement partout.
+  function openPhotoInNewTab(dataUrl){
+    try{
+      var parts = dataUrl.split(',');
+      var mimeMatch = parts[0].match(/data:(.*);base64/);
+      var mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+      var binary = atob(parts[1]);
+      var array = new Uint8Array(binary.length);
+      for(var i = 0; i < binary.length; i++){ array[i] = binary.charCodeAt(i); }
+      var blob = new Blob([array], { type: mime });
+      var url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 60000);
+    } catch(e){
+      console.error('Erreur ouverture photo', e);
+      alert('Impossible d\'ouvrir la photo.');
+    }
+  }
 
   function escapeHtml(str){
     var div = document.createElement('div');
@@ -436,116 +2035,129 @@
     return div.innerHTML;
   }
 
-  function reportIcon(status){
-    var color = status === 'valide' ? '#2f6b3a' : '#c98a1f';
-    return L.divIcon({
-      className: '',
-      html: '<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:' + color + ';border:2px solid #fff;transform:rotate(-45deg);box-shadow:1px 2px 3px rgba(0,0,0,.4);"></div>',
-      iconSize: [22,22],
-      iconAnchor: [11,22]
+  // ---- Ouverture du formulaire de signalement ----
+  var selectedQtyInternal = null;
+
+  function openReportForm(lat, lon){
+    pendingReportCoords = { lat: lat, lon: lon };
+    document.getElementById('reportCoords').textContent = lat.toFixed(5) + ', ' + lon.toFixed(5);
+    document.getElementById('reportByName').textContent = getUserFullName(currentUser);
+    selectedQtyInternal = null;
+    document.querySelectorAll('#reportQtyOptions .qty-option').forEach(function(el){ el.classList.remove('selected'); });
+    document.getElementById('reportNote').value = '';
+    document.getElementById('reportPhoto').value = '';
+    document.getElementById('photoPreview').style.display = 'none';
+    document.getElementById('reportFormErr').textContent = '';
+    document.getElementById('reportModal').classList.remove('hidden');
+  }
+
+  document.querySelectorAll('#reportQtyOptions .qty-option').forEach(function(el){
+    el.addEventListener('click', function(){
+      document.querySelectorAll('#reportQtyOptions .qty-option').forEach(function(o){ o.classList.remove('selected'); });
+      el.classList.add('selected');
+      selectedQtyInternal = el.getAttribute('data-qty');
     });
-  }
+  });
 
-  function renderMarkers(){
-    markersLayer.clearLayers();
-    reports.forEach(function(r){
-      if(r.status === 'rejete') return; // pas affiché publiquement
-      // Un signalement "validé" sans transferredToId signifie que le transfert
-      // vers la base officielle n'a pas réellement abouti (incohérence de
-      // données, ex: bug corrigé entre-temps) : on ne l'affiche pas comme
-      // confirmé pour ne pas induire le public en erreur, ni comme nouveau
-      // (il a déjà été traité par un conseiller) — on le masque simplement.
-      if(r.status === 'valide' && !r.transferredToId) return;
-      var m = L.marker([r.lat, r.lon], { icon: reportIcon(r.status) });
-      var label = r.status === 'valide' ? 'Confirmé par la mairie' : 'En cours d\'examen';
-      // Par défaut, aucune donnée identifiante n'est affichée publiquement
-      // (RGPD — minimisation des données). Seul le prénom est montré, et
-      // uniquement si la personne l'a explicitement accepté à l'envoi.
-      var displayName = (r.publicNameConsent && r.firstName) ? escapeHtml(r.firstName) : 'Anonyme';
-      m.bindPopup('<b>' + displayName + '</b><br>' +
-        'Quantité : ' + escapeHtml(r.quantity || '—') + '<br>' +
-        new Date(r.date).toLocaleDateString('fr-FR') + '<br>' +
-        '<i>' + label + '</i>');
-      m.addTo(markersLayer);
-    });
-  }
+  document.getElementById('btnReport').addEventListener('click', function(){
+    if(!lastFix){
+      alert('Position GPS pas encore disponible, patientez quelques secondes.');
+      return;
+    }
+    if(!isInsideCommune(lastFix[0], lastFix[1])){
+      alert(HORS_TERRITOIRE_MSG);
+      return;
+    }
+    openReportForm(lastFix[0], lastFix[1]);
+  });
 
-  function loadReports(silent){
-    if(!silent) showSync('Synchronisation…');
-    fetch(CONFIG.WORKER_URL, { method:'GET', headers:{ 'X-App-Secret': CONFIG.CITIZEN_SECRET } })
-      .then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-      .then(function(data){
-        reports = data.items || [];
-        renderMarkers();
-        if(!silent) hideSync();
-      })
-      .catch(function(e){
-        console.error('Erreur chargement signalements citoyens', e);
-        if(!silent){ hideSync(); }
-      });
-  }
+  document.getElementById('btnCancelReport').addEventListener('click', function(){
+    document.getElementById('reportModal').classList.add('hidden');
+  });
 
-  // ================= PLACEMENT SUR LA CARTE =================
-  var placing = false;
-  var pendingCoords = null;
+  // ---- Placement manuel sur la carte (pour signaler un endroit sans y être) ----
+  var placingReport = false;
 
-  function enterPlacing(){
-    placing = true;
-    document.getElementById('btnReport').classList.add('active');
+  function enterPlacingMode(){
+    placingReport = true;
+    following = false;
+    updateFollowBtn();
+    document.getElementById('btnPlacePin').classList.add('active');
     document.getElementById('placeBanner').classList.add('show');
     map.getContainer().style.cursor = 'crosshair';
   }
-  function exitPlacing(){
-    placing = false;
-    document.getElementById('btnReport').classList.remove('active');
+  function exitPlacingMode(){
+    placingReport = false;
+    document.getElementById('btnPlacePin').classList.remove('active');
     document.getElementById('placeBanner').classList.remove('show');
     map.getContainer().style.cursor = '';
   }
 
-  document.getElementById('btnReport').addEventListener('click', function(){
-    if(placing){ exitPlacing(); return; }
-    enterPlacing();
+  document.getElementById('btnPlacePin').addEventListener('click', function(){
+    if(placingReport){ exitPlacingMode(); return; }
+    enterPlacingMode();
   });
-  document.getElementById('btnCancelPlace').addEventListener('click', exitPlacing);
+  document.getElementById('btnCancelPlace').addEventListener('click', function(){
+    if(relocatingSignalId){
+      var id = relocatingSignalId;
+      exitRelocateMode();
+      openSignalQuickEdit(id);
+      return;
+    }
+    exitPlacingMode();
+  });
 
   map.on('click', function(e){
-    if(!placing) return;
-    exitPlacing();
+    if(relocatingSignalId){
+      var id = relocatingSignalId;
+      exitRelocateMode();
+      var s = signalements.find(function(x){ return x.id === id; });
+      if(!s) return;
+      if(!isInsideCommune(e.latlng.lat, e.latlng.lng)){
+        alert(HORS_TERRITOIRE_MSG);
+        openSignalQuickEdit(id);
+        return;
+      }
+      s.lat = e.latlng.lat;
+      s.lon = e.latlng.lng;
+      s.lastModifiedBy = getUserFullName(currentUser);
+      s.lastModifiedAt = new Date().toISOString();
+      renderSignalMarkers();
+      renderList();
+      saveSignalements();
+      openSignalQuickEdit(id);
+      return;
+    }
+    if(!placingReport) return;
+    exitPlacingMode();
     if(!isInsideCommune(e.latlng.lat, e.latlng.lng)){
       alert(HORS_TERRITOIRE_MSG);
       return;
     }
-    openForm(e.latlng.lat, e.latlng.lng);
+    openReportForm(e.latlng.lat, e.latlng.lng);
   });
 
-  // ================= FORMULAIRE =================
-  var selectedQty = null;
-  var photoDataUrl = null;
+  // ---- Repositionnement d'un signalement existant (si le point GPS initial était imprécis) ----
+  var relocatingSignalId = null;
 
-  function openForm(lat, lon){
-    pendingCoords = { lat: lat, lon: lon };
-    selectedQty = null;
-    photoDataUrl = null;
-    document.getElementById('reportFirstName').value = '';
-    document.getElementById('reportLastName').value = '';
-    document.getElementById('reportEmail').value = '';
-    document.getElementById('reportPublicConsent').checked = false;
-    document.getElementById('reportNote').value = '';
-    document.getElementById('reportPhoto').value = '';
-    document.getElementById('photoPreview').style.display = 'none';
-    document.getElementById('formErr').textContent = '';
-    document.querySelectorAll('.qty-option').forEach(function(el){ el.classList.remove('selected'); });
-    document.getElementById('reportModal').classList.remove('hidden');
+  function enterRelocateMode(id){
+    relocatingSignalId = id;
+    following = false;
+    updateFollowBtn();
+    document.getElementById('quickEditModal').classList.add('hidden');
+    document.querySelector('#placeBanner span').textContent = '👉 Touchez la carte au bon emplacement pour repositionner ce signalement.';
+    document.getElementById('placeBanner').classList.add('show');
+    map.getContainer().style.cursor = 'crosshair';
+  }
+  function exitRelocateMode(){
+    relocatingSignalId = null;
+    document.querySelector('#placeBanner span').textContent = '👉 Touchez la carte à l\'endroit exact du signalement.';
+    document.getElementById('placeBanner').classList.remove('show');
+    map.getContainer().style.cursor = '';
   }
 
-  document.querySelectorAll('.qty-option').forEach(function(el){
-    el.addEventListener('click', function(){
-      document.querySelectorAll('.qty-option').forEach(function(o){ o.classList.remove('selected'); });
-      el.classList.add('selected');
-      selectedQty = el.getAttribute('data-qty');
-    });
-  });
-
+  // ---- Compression de la photo côté navigateur avant sauvegarde ----
+  var photoDataUrl = null;
   document.getElementById('reportPhoto').addEventListener('change', function(e){
     var file = e.target.files[0];
     if(!file) return;
@@ -570,13 +2182,22 @@
     reader.readAsDataURL(file);
   });
 
-  document.getElementById('btnCancelReport').addEventListener('click', function(){
-    document.getElementById('reportModal').classList.add('hidden');
-  });
+  var QTY_LABELS = { '<10':'Moins de 10 plants', '10-50':'10 à 50 plants', '50-500':'50 à 500 plants', '>500':'Plus de 500 plants' };
 
-  // Génère un numéro de signalement lisible et unique (ex: AMB-260728-4821),
-  // pour que le citoyen puisse s'y référer sans avoir besoin d'un compte.
-  function generateRefNumber(){
+  // Génère un numéro de référence lisible et unique pour un signalement officiel
+  // (ex: SM-260729-4821), distinct des numéros "AMB-" des signalements citoyens.
+  function generateSMRefNumber(){
+    var d = new Date();
+    var yy = String(d.getFullYear()).slice(2);
+    var mm = String(d.getMonth() + 1).padStart(2, '0');
+    var dd = String(d.getDate()).padStart(2, '0');
+    var rand = Math.floor(1000 + Math.random() * 9000);
+    return 'SM-' + yy + mm + dd + '-' + rand;
+  }
+
+  // Même logique pour les anciens signalements citoyens créés avant l'ajout
+  // du numéro AMB automatique (ils affichaient sinon leur identifiant technique).
+  function generateCitizenRefNumberFallback(){
     var d = new Date();
     var yy = String(d.getFullYear()).slice(2);
     var mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -585,76 +2206,442 @@
     return 'AMB-' + yy + mm + dd + '-' + rand;
   }
 
-  document.getElementById('btnSubmitReport').addEventListener('click', function(){
-    var firstName = document.getElementById('reportFirstName').value.trim();
-    var lastName = document.getElementById('reportLastName').value.trim();
-    var email = document.getElementById('reportEmail').value.trim();
-    var publicNameConsent = document.getElementById('reportPublicConsent').checked;
-    var note = document.getElementById('reportNote').value.trim();
-    var err = document.getElementById('formErr');
-    if(!firstName || !lastName){ err.textContent = 'Merci d\'indiquer votre prénom et votre nom.'; return; }
-    if(!selectedQty){ err.textContent = 'Merci d\'indiquer une quantité estimée.'; return; }
-    if(!pendingCoords){ err.textContent = 'Position manquante, réessayez.'; return; }
-
-    var refNumber = generateRefNumber();
-    var report = {
-      id: 'cit_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
-      refNumber: refNumber,
-      firstName: firstName,
-      lastName: lastName,
-      email: email || null,
-      publicNameConsent: publicNameConsent,
-      quantity: selectedQty,
-      note: note || null,
+  document.getElementById('btnSaveReport').addEventListener('click', function(){
+    if(!pendingReportCoords) return;
+    var err = document.getElementById('reportFormErr');
+    if(!selectedQtyInternal){ err.textContent = 'Merci d\'indiquer une quantité estimée.'; return; }
+    var extraNote = document.getElementById('reportNote').value.trim();
+    var nowIso = new Date().toISOString();
+    var entry = {
+      id: 'sig_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
+      refNumber: generateSMRefNumber(),
+      lat: pendingReportCoords.lat,
+      lon: pendingReportCoords.lon,
+      name: getUserFullName(currentUser),
+      quantity: selectedQtyInternal,
+      note: extraNote || null,
       photo: photoDataUrl || null,
-      lat: pendingCoords.lat,
-      lon: pendingCoords.lon,
-      date: new Date().toISOString(),
-      status: 'nouveau'
+      date: nowIso,
+      classification: 'valide', // un signalement fait directement par un conseiller est considéré validé d'emblée
+      traite: false,
+      isErreur: false,
+      createdBy: getUserFullName(currentUser),
+      createdAt: nowIso
     };
+    signalements.push(entry);
+    renderSignalMarkers();
+    renderList();
+    document.getElementById('reportModal').classList.add('hidden');
+    photoDataUrl = null;
+    saveSignalements();
+  });
 
-    var btn = document.getElementById('btnSubmitReport');
-    btn.disabled = true;
-    btn.textContent = 'Envoi…';
+  // ================= LISTE DES SIGNALEMENTS =================
+  var listShowErrors = false;
 
-    fetch(CONFIG.WORKER_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-App-Secret': CONFIG.CITIZEN_SECRET },
-      body: JSON.stringify({ report: report })
-    })
-    .then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-    .then(function(){
-      document.getElementById('reportModal').classList.add('hidden');
-      document.getElementById('thanksRefNumber').textContent = refNumber;
-      document.getElementById('thanksModal').classList.remove('hidden');
-      loadReports(true);
-    })
-    .catch(function(e){
-      console.error('Erreur envoi signalement', e);
-      err.textContent = 'Erreur lors de l\'envoi. Vérifiez votre connexion et réessayez.';
-    })
-    .finally(function(){
-      btn.disabled = false;
-      btn.textContent = 'Envoyer le signalement';
+  // ---- Version compacte pour la liste : juste l'essentiel + Modifier/Supprimer ----
+  function buildSignalRowHtml(s){
+    var canDelete = currentRole === 'admin';
+    var qtyLabel = s.quantity ? (QTY_LABELS[s.quantity] || s.quantity) : '—';
+    var clsInfo = CLASSIFICATIONS[getClassification(s)] || CLASSIFICATIONS['valide'];
+    var isTraite = getTraite(s);
+    return '<div class="signal-row">' +
+      '<span class="status-pill" style="background:' + clsInfo.color + '22;color:' + clsInfo.color + ';">' + clsInfo.label + '</span> ' +
+      '<span class="status-pill' + (isTraite ? ' done' : '') + '">' + (isTraite ? 'Traité' : 'Non traité') + '</span>' +
+      '<div class="meta"><b>' + escapeHtml(s.refNumber || '—') + '</b> · ' + new Date(s.date).toLocaleDateString('fr-FR') + ' · ' + escapeHtml(s.name || '') + '</div>' +
+      '<div class="meta">' + s.lat.toFixed(5) + ', ' + s.lon.toFixed(5) + '</div>' +
+      '<div class="meta">Quantité : ' + escapeHtml(qtyLabel) + '</div>' +
+      '<div class="row-actions">' +
+        '<button class="btn" data-modify="' + s.id + '" style="flex:1;padding:8px;font-size:11px;">Modifier</button>' +
+        (canDelete ? '<button class="btn" data-delete="' + s.id + '" style="flex:1;padding:8px;font-size:11px;color:var(--danger);border-color:var(--danger);">Supprimer</button>' : '') +
+      '</div>' +
+    '</div>';
+  }
+
+  // ---- Version complète pour le panneau "Modifier" : tout le détail + contrôles ----
+  function buildSignalDetailHtml(s){
+    var clsKey = getClassification(s);
+    var clsInfo = CLASSIFICATIONS[clsKey] || CLASSIFICATIONS['valide'];
+    var isTraite = getTraite(s);
+    var isErreur = getErreur(s);
+    var canDelete = currentRole === 'admin';
+    var qtyKey = s.quantity || '';
+    var classifOptions = Object.keys(CLASSIFICATIONS).map(function(k){
+      return '<option value="' + k + '"' + (k === clsKey ? ' selected' : '') + '>' + CLASSIFICATIONS[k].label + '</option>';
+    }).join('');
+    var qtyOptions = '<option value="">— Non renseignée —</option>' + Object.keys(QTY_LABELS).map(function(k){
+      return '<option value="' + k + '"' + (k === qtyKey ? ' selected' : '') + '>' + QTY_LABELS[k] + '</option>';
+    }).join('');
+
+    var originLine = '';
+    if(s.fromCitizenId){
+      var citFullName = ((s.citizenFirstName || '') + ' ' + (s.citizenLastName || '')).trim();
+      originLine = '<div class="meta" style="border-left:3px solid #c9268a;padding-left:8px;margin:8px 0;">' +
+        '🧑 Issu du signalement citoyen <b>' + escapeHtml(s.fromCitizenRefNumber || '—') + '</b><br>' +
+        (citFullName ? escapeHtml(citFullName) : '') +
+        (s.citizenEmail ? ' · ' + escapeHtml(s.citizenEmail) : '') +
+      '</div>';
+    }
+
+    var createdLine = s.createdBy ?
+      '<div class="meta">Créé par <b>' + escapeHtml(s.createdBy) + '</b> le ' + new Date(s.createdAt || s.date).toLocaleString('fr-FR') + '</div>' : '';
+    var lastModLine = (s.lastModifiedBy && s.lastModifiedAt !== s.createdAt) ?
+      '<div class="meta" style="font-style:italic;">Dernière modif. par ' + escapeHtml(s.lastModifiedBy) + ' le ' + new Date(s.lastModifiedAt).toLocaleString('fr-FR') + '</div>' : '';
+
+    return '<div class="signal-row">' +
+      '<span class="status-pill" style="background:' + clsInfo.color + '22;color:' + clsInfo.color + ';">' + clsInfo.label + '</span> ' +
+      '<span class="status-pill' + (isTraite ? ' done' : '') + '">' + (isTraite ? 'Traité' : 'Non traité') + '</span>' +
+      (isErreur ? ' <span class="status-pill erreur">Signalement erroné</span>' : '') +
+      '<div class="meta"><b>' + escapeHtml(s.refNumber || '—') + '</b> · ' + new Date(s.date).toLocaleString('fr-FR') + ' · ' + escapeHtml(s.name || '') + '</div>' +
+      '<div class="meta" id="qeCoords-' + s.id + '">' + s.lat.toFixed(5) + ', ' + s.lon.toFixed(5) + '</div>' +
+      originLine +
+      createdLine +
+      lastModLine +
+      (s.photo ? '<button type="button" class="btn" data-viewphoto="' + s.id + '" style="display:inline-block;margin:6px 0;padding:8px 12px;font-size:12px;font-weight:700;">📷 Voir la photo</button><br>' : '') +
+      '<div class="field" style="margin-top:10px;">' +
+        '<label>Quantité</label>' +
+        '<select data-quantity="' + s.id + '" style="width:100%;font-size:14px;padding:9px 10px;border:2px solid #ccc;border-radius:8px;">' + qtyOptions + '</select>' +
+      '</div>' +
+      '<div class="field">' +
+        '<label>Note</label>' +
+        '<textarea data-noteedit="' + s.id + '" style="width:100%;font-size:14px;padding:9px 10px;border:2px solid #ccc;border-radius:8px;min-height:60px;font-family:inherit;">' + escapeHtml(s.note || '') + '</textarea>' +
+        '<button class="btn" data-savenote="' + s.id + '" style="width:100%;margin-top:6px;padding:8px;font-size:11px;">Enregistrer la note</button>' +
+      '</div>' +
+      '<div class="row-actions" style="flex-wrap:wrap;margin-top:10px;">' +
+        '<button class="btn" data-goto="' + s.id + '" style="flex:1;padding:8px;font-size:11px;">Carte</button>' +
+        '<select data-classify="' + s.id + '" class="btn" style="flex:1;padding:8px;font-size:11px;">' + classifOptions + '</select>' +
+        '<button class="btn" data-toggletraite="' + s.id + '" style="flex:1;padding:8px;font-size:11px;">' + (isTraite ? 'Non traité' : 'Traité') + '</button>' +
+        '<button class="btn" data-erreur="' + s.id + '" style="flex:1;padding:8px;font-size:11px;">' + (isErreur ? 'Annuler erreur' : 'Erreur') + '</button>' +
+        '<button class="btn" data-relocate="' + s.id + '" style="flex:1;padding:8px;font-size:11px;">📍 Repositionner</button>' +
+        (canDelete ? '<button class="btn" data-delete="' + s.id + '" style="flex:1;padding:8px;font-size:11px;color:var(--danger);border-color:var(--danger);">Suppr.</button>' : '') +
+      '</div>' +
+    '</div>';
+  }
+
+  function wireSignalRowButtons(content, closeModalId){
+    content.querySelectorAll('[data-viewphoto]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var s = signalements.find(function(x){ return x.id === btn.getAttribute('data-viewphoto'); });
+        if(s && s.photo) openPhotoInNewTab(s.photo);
+      });
+    });
+    content.querySelectorAll('[data-modify]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var id = btn.getAttribute('data-modify');
+        var s = signalements.find(function(x){ return x.id === id; });
+        document.getElementById('listModal').classList.add('hidden');
+        if(s){
+          following = false; updateFollowBtn();
+          map.setView([s.lat, s.lon], 17, { animate:true });
+        }
+        openSignalQuickEdit(id);
+      });
+    });
+    content.querySelectorAll('[data-goto]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var id = btn.getAttribute('data-goto');
+        var s = signalements.find(function(x){ return x.id === id; });
+        if(s){
+          if(closeModalId) document.getElementById(closeModalId).classList.add('hidden');
+          document.getElementById('listModal').classList.add('hidden');
+          following = false; updateFollowBtn();
+          map.setView([s.lat, s.lon], 17, { animate:true });
+        }
+      });
+    });
+    content.querySelectorAll('[data-classify]').forEach(function(sel){
+      sel.addEventListener('change', function(){
+        var id = sel.getAttribute('data-classify');
+        var s = signalements.find(function(x){ return x.id === id; });
+        if(s){
+          s.classification = sel.value;
+          s.traite = getTraite(s);
+          s.isErreur = getErreur(s);
+          s.lastModifiedBy = getUserFullName(currentUser);
+          s.lastModifiedAt = new Date().toISOString();
+          renderSignalMarkers();
+          renderList();
+          if(closeModalId) refreshQuickEdit(id);
+          saveSignalements();
+        }
+      });
+    });
+    content.querySelectorAll('[data-quantity]').forEach(function(sel){
+      sel.addEventListener('change', function(){
+        var id = sel.getAttribute('data-quantity');
+        var s = signalements.find(function(x){ return x.id === id; });
+        if(s){
+          s.quantity = sel.value || null;
+          s.lastModifiedBy = getUserFullName(currentUser);
+          s.lastModifiedAt = new Date().toISOString();
+          renderList();
+          if(closeModalId) refreshQuickEdit(id);
+          saveSignalements();
+        }
+      });
+    });
+    content.querySelectorAll('[data-toggletraite]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var id = btn.getAttribute('data-toggletraite');
+        var s = signalements.find(function(x){ return x.id === id; });
+        if(s){
+          s.classification = getClassification(s);
+          s.traite = !getTraite(s);
+          s.isErreur = getErreur(s);
+          s.lastModifiedBy = getUserFullName(currentUser);
+          s.lastModifiedAt = new Date().toISOString();
+          renderSignalMarkers();
+          renderList();
+          if(closeModalId) refreshQuickEdit(id);
+          saveSignalements();
+        }
+      });
+    });
+    content.querySelectorAll('[data-erreur]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var id = btn.getAttribute('data-erreur');
+        var s = signalements.find(function(x){ return x.id === id; });
+        if(s){
+          s.classification = getClassification(s);
+          s.traite = getTraite(s);
+          s.isErreur = !getErreur(s);
+          s.lastModifiedBy = getUserFullName(currentUser);
+          s.lastModifiedAt = new Date().toISOString();
+          renderSignalMarkers();
+          renderList();
+          if(closeModalId) refreshQuickEdit(id);
+          saveSignalements();
+        }
+      });
+    });
+    content.querySelectorAll('[data-savenote]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var id = btn.getAttribute('data-savenote');
+        var s = signalements.find(function(x){ return x.id === id; });
+        var textarea = content.querySelector('[data-noteedit="' + id + '"]');
+        if(s && textarea){
+          s.note = textarea.value.trim() || null;
+          s.lastModifiedBy = getUserFullName(currentUser);
+          s.lastModifiedAt = new Date().toISOString();
+          var originalText = btn.textContent;
+          btn.textContent = 'Enregistrement…';
+          btn.disabled = true;
+          saveSignalements().then(function(){
+            btn.textContent = 'Note enregistrée ✓';
+            setTimeout(function(){ btn.textContent = originalText; btn.disabled = false; }, 1500);
+          }).catch(function(){
+            btn.textContent = originalText;
+            btn.disabled = false;
+            alert('Erreur lors de l\'enregistrement de la note.');
+          });
+          renderList();
+        }
+      });
+    });
+    content.querySelectorAll('[data-relocate]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var id = btn.getAttribute('data-relocate');
+        enterRelocateMode(id);
+      });
+    });
+    content.querySelectorAll('[data-delete]').forEach(function(btn){
+      btn.addEventListener('click', async function(){
+        var id = btn.getAttribute('data-delete');
+        var s = signalements.find(function(x){ return x.id === id; });
+        if(!confirm('Supprimer définitivement ce signalement ? Cette action est irréversible.')) return;
+        signalements = signalements.filter(function(x){ return x.id !== id; });
+        renderSignalMarkers();
+        renderList();
+        if(closeModalId) document.getElementById(closeModalId).classList.add('hidden');
+        await saveSignalements();
+
+        // Si ce signalement provenait d'un citoyen, on laisse le conseiller
+        // choisir ce qu'il advient du signalement citoyen d'origine : soit le
+        // rejeter (il disparaît alors complètement côté public), soit le
+        // remettre "en attente" pour permettre un nouveau traitement.
+        if(s && s.fromCitizenId){
+          var r = citizenReports.find(function(x){ return x.id === s.fromCitizenId; });
+          if(r){
+            var rejectIt = confirm(
+              'Ce signalement provenait du signalement citoyen ' + (r.refNumber || '') + '.\n\n' +
+              'OK = le REJETER (il disparaîtra complètement de la carte publique).\n' +
+              'Annuler = le remettre "en attente" (visible en orange, pour un nouveau traitement).'
+            );
+            r.status = rejectIt ? 'rejete' : 'nouveau';
+            delete r.transferredToId;
+            delete r.processedBy;
+            delete r.processedAt;
+            renderList();
+            updateCitizenBadge();
+            renderCitizenMarkers();
+            saveCitizenReports();
+          }
+        }
+      });
+    });
+  }
+
+  // Réaffiche le modal d'édition rapide avec les données à jour après une action
+  // (ex: changement de classification), sans le refermer.
+  function refreshQuickEdit(id){
+    var s = signalements.find(function(x){ return x.id === id; });
+    if(!s) return;
+    var box = document.getElementById('quickEditContent');
+    box.innerHTML = buildSignalDetailHtml(s);
+    wireSignalRowButtons(box, 'quickEditModal');
+  }
+
+  var showSMList = true;
+
+  function renderList(){
+    var content = document.getElementById('listContent');
+    var activeCount = signalements.filter(function(s){ return !getErreur(s); }).length;
+    var errorCount = signalements.length - activeCount;
+    document.getElementById('listCount').textContent = activeCount;
+
+    var smHeader = '<div id="btnToggleSMList" style="margin-bottom:10px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border:2px solid var(--ink);border-radius:10px;background:var(--paper);">' +
+      '<b style="font-size:14px;">' + (showSMList ? '▾' : '▸') + ' 📋 Signalements officiels (' + activeCount + ')</b>' +
+      '</div>';
+
+    var errorsToggle = showSMList ? '<div style="margin-bottom:10px;">' +
+      '<button class="btn" id="btnToggleErrors" style="font-size:12px;padding:7px 10px;">' +
+        (listShowErrors ? 'Masquer les signalements erronés' : 'Voir aussi les erronés (' + errorCount + ')') +
+      '</button></div>' : '';
+
+    var toggleBar = smHeader + errorsToggle;
+
+    var visible = signalements.filter(function(s){ return listShowErrors || !getErreur(s); });
+
+    if(!showSMList){
+      content.innerHTML = toggleBar + renderCitizenSection();
+      wireToggleSMButton();
+      wireCitizenSectionButtons(content);
+      updateCitizenBadge();
+      return;
+    }
+
+    if(visible.length === 0){
+      content.innerHTML = toggleBar + '<p style="color:var(--muted);font-size:13px;">Aucun signalement pour l\'instant.</p>' + renderCitizenSection();
+      wireToggleErrorsButton();
+      wireToggleSMButton();
+      wireCitizenSectionButtons(content);
+      updateCitizenBadge();
+      return;
+    }
+    var sorted = visible.slice().sort(function(a,b){ return new Date(b.date) - new Date(a.date); });
+    content.innerHTML = toggleBar + sorted.map(buildSignalRowHtml).join('') + renderCitizenSection();
+
+    wireToggleErrorsButton();
+    wireToggleSMButton();
+    wireCitizenSectionButtons(content);
+    updateCitizenBadge();
+    wireSignalRowButtons(content, null);
+  }
+
+  function wireToggleSMButton(){
+    var btn = document.getElementById('btnToggleSMList');
+    if(btn){
+      btn.addEventListener('click', function(){
+        showSMList = !showSMList;
+        renderList();
+      });
+    }
+  }
+
+  function wireToggleErrorsButton(){
+    var btn = document.getElementById('btnToggleErrors');
+    if(btn){
+      btn.addEventListener('click', function(){
+        listShowErrors = !listShowErrors;
+        renderList();
+      });
+    }
+  }
+
+  document.getElementById('btnListToggle').addEventListener('click', function(){
+    renderList();
+    document.getElementById('listModal').classList.remove('hidden');
+    loadSignalements(true); // rafraîchit immédiatement dès l'ouverture, sans attendre le cycle automatique
+    loadCitizenReports(true);
+  });
+  document.getElementById('btnCloseList').addEventListener('click', function(){
+    document.getElementById('listModal').classList.add('hidden');
+  });
+  document.getElementById('btnCloseListX').addEventListener('click', function(){
+    document.getElementById('listModal').classList.add('hidden');
+  });
+  document.getElementById('btnCloseQuickEdit').addEventListener('click', function(){
+    document.getElementById('quickEditModal').classList.add('hidden');
+  });
+  document.getElementById('btnCloseQuickEditX').addEventListener('click', function(){
+    document.getElementById('quickEditModal').classList.add('hidden');
+  });
+
+  // Fermer en touchant en dehors du panneau (sur le fond assombri), pratique
+  // quand la liste est longue et qu'on ne veut pas tout redescendre pour
+  // atteindre le bouton "Fermer".
+  ['listModal', 'quickEditModal', 'accountModal', 'aboutModal'].forEach(function(id){
+    var modalEl = document.getElementById(id);
+    modalEl.addEventListener('click', function(e){
+      if(e.target === modalEl){
+        modalEl.classList.add('hidden');
+      }
     });
   });
 
-  document.getElementById('btnShowAbout').addEventListener('click', function(){
-    document.getElementById('aboutModal').classList.remove('hidden');
-  });
-  document.getElementById('btnCloseAbout').addEventListener('click', function(){
-    document.getElementById('aboutModal').classList.add('hidden');
+  // Rafraîchissement instantané quand on revient sur l'appli (ex: après avoir
+  // changé d'onglet ou mis Safari en arrière-plan), sans attendre le prochain
+  // cycle des 15 secondes.
+  document.addEventListener('visibilitychange', function(){
+    if(document.visibilityState === 'visible' && currentUser){
+      loadSignalements(true);
+      syncTracks();
+    }
   });
 
-  document.getElementById('btnCloseThanks').addEventListener('click', function(){
-    document.getElementById('thanksModal').classList.add('hidden');
+  // ---- Affichage/masquage et rechargement manuel des routes ----
+  // ---- Repli/dépli de la légende ----
+  document.getElementById('legendHeader').addEventListener('click', function(){
+    var body = document.getElementById('legendBody');
+    var icon = document.getElementById('legendToggleIcon');
+    var collapsed = body.classList.toggle('collapsed');
+    icon.textContent = collapsed ? '▸' : '▾';
+  });
+
+  document.getElementById('chkRoadsRC').addEventListener('change', function(e){
+    if(e.target.checked){ map.addLayer(roadsLayerRC); } else { map.removeLayer(roadsLayerRC); }
+  });
+  document.getElementById('chkRoadsRD').addEventListener('change', function(e){
+    if(e.target.checked){ map.addLayer(roadsLayerRD); } else { map.removeLayer(roadsLayerRD); }
+  });
+  document.getElementById('chkRoadsRN').addEventListener('change', function(e){
+    if(e.target.checked){ map.addLayer(roadsLayerRN); } else { map.removeLayer(roadsLayerRN); }
+  });
+
+  document.getElementById('btnReloadRoads').addEventListener('click', function(){
+    var btn = document.getElementById('btnReloadRoads');
+    btn.disabled = true;
+    btn.textContent = 'Chargement…';
+    loadRoadsData(function(data, precision){
+      roadsLayerRC.clearLayers(); roadsLayerRD.clearLayers(); roadsLayerRN.clearLayers();
+      drawRoads(data);
+      saveCache(data, precision);
+      btn.disabled = false;
+      btn.textContent = '↻ Recharger les routes';
+    }, function(){
+      btn.disabled = false;
+      btn.textContent = '↻ Recharger les routes';
+      alert('Toujours impossible de contacter OpenStreetMap. Réessayez dans quelques minutes.');
+    });
   });
 
   // ---- Boot ----
-  loadReports();
+  updateFollowBtn();
+  initAuth();
+  loadCommuneRoads();
   loadCommuneBoundary();
   startGps();
-  setInterval(function(){ loadReports(true); }, 30000);
+  loadSignalements();
 
 })();
 </script>
