@@ -148,6 +148,18 @@
       <label>Email (facultatif)</label>
       <input type="email" id="reportEmail" placeholder="pour être informé du suivi">
     </div>
+    <div class="field" style="display:flex;align-items:flex-start;gap:8px;">
+      <input type="checkbox" id="reportPublicConsent" style="margin-top:3px;flex:none;">
+      <label for="reportPublicConsent" style="font-size:12px;font-weight:400;color:var(--muted);cursor:pointer;">
+        J'accepte que mon <b>prénom</b> soit visible publiquement sur la carte à côté de mon signalement.
+        Si vous ne cochez pas cette case, votre signalement apparaîtra comme <b>« Anonyme »</b> pour les autres visiteurs.
+      </label>
+    </div>
+    <p class="hint" style="margin-top:-6px;">
+      Vos informations (nom, prénom, email) sont transmises uniquement à la mairie de Belsentes pour le suivi de votre
+      signalement, et ne sont jamais publiées sans votre accord explicite ci-dessus. Conformément au RGPD, vous pouvez
+      demander l'accès, la rectification ou la suppression de vos données en contactant la mairie.
+    </p>
     <div class="field">
       <label>Quantité estimée</label>
       <div class="qty-options">
@@ -394,7 +406,11 @@
       if(r.status === 'rejete') return; // pas affiché publiquement
       var m = L.marker([r.lat, r.lon], { icon: reportIcon(r.status) });
       var label = r.status === 'valide' ? 'Confirmé par la mairie' : 'En cours d\'examen';
-      m.bindPopup('<b>' + escapeHtml(((r.firstName || '') + ' ' + (r.lastName || '')).trim() || 'Anonyme') + '</b><br>' +
+      // Par défaut, aucune donnée identifiante n'est affichée publiquement
+      // (RGPD — minimisation des données). Seul le prénom est montré, et
+      // uniquement si la personne l'a explicitement accepté à l'envoi.
+      var displayName = (r.publicNameConsent && r.firstName) ? escapeHtml(r.firstName) : 'Anonyme';
+      m.bindPopup('<b>' + displayName + '</b><br>' +
         'Quantité : ' + escapeHtml(r.quantity || '—') + '<br>' +
         new Date(r.date).toLocaleDateString('fr-FR') + '<br>' +
         '<i>' + label + '</i>');
@@ -461,6 +477,7 @@
     document.getElementById('reportFirstName').value = '';
     document.getElementById('reportLastName').value = '';
     document.getElementById('reportEmail').value = '';
+    document.getElementById('reportPublicConsent').checked = false;
     document.getElementById('reportPhoto').value = '';
     document.getElementById('photoPreview').style.display = 'none';
     document.getElementById('formErr').textContent = '';
@@ -519,6 +536,7 @@
     var firstName = document.getElementById('reportFirstName').value.trim();
     var lastName = document.getElementById('reportLastName').value.trim();
     var email = document.getElementById('reportEmail').value.trim();
+    var publicNameConsent = document.getElementById('reportPublicConsent').checked;
     var err = document.getElementById('formErr');
     if(!firstName || !lastName){ err.textContent = 'Merci d\'indiquer votre prénom et votre nom.'; return; }
     if(!selectedQty){ err.textContent = 'Merci d\'indiquer une quantité estimée.'; return; }
@@ -531,6 +549,7 @@
       firstName: firstName,
       lastName: lastName,
       email: email || null,
+      publicNameConsent: publicNameConsent,
       quantity: selectedQty,
       photo: photoDataUrl || null,
       lat: pendingCoords.lat,
