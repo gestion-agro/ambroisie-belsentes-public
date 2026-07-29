@@ -118,7 +118,7 @@
 
 <div id="topbar">
   <div class="title">🌿 Signaler l'ambroisie</div>
-  <div class="subtitle">Commune de Belsentes · v2026-07-29-f</div>
+  <div class="subtitle">Commune de Belsentes · v2026-07-29-g</div>
 </div>
 
 <div id="legend">
@@ -602,6 +602,30 @@
     return 'AMB-' + yy + mm + dd + '-' + rand;
   }
 
+  // Protection anti-abus légère : limite le nombre de signalements envoyés
+  // depuis cet appareil sur une courte période. Ce n'est pas une sécurité
+  // forte (facilement contournable en vidant le stockage du navigateur), mais
+  // ça dissuade un envoi automatisé massif tout en laissant une vraie marge
+  // pour quelqu'un qui signale plusieurs foyers d'ambroisie lors d'une même sortie.
+  var RATE_LIMIT_MAX = 5;
+  var RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+  var RATE_LIMIT_KEY = 'ambroisie_submit_timestamps';
+
+  function checkRateLimit(){
+    var now = Date.now();
+    var timestamps = [];
+    try{
+      timestamps = JSON.parse(localStorage.getItem(RATE_LIMIT_KEY) || '[]');
+    } catch(e){ timestamps = []; }
+    timestamps = timestamps.filter(function(t){ return now - t < RATE_LIMIT_WINDOW_MS; });
+    if(timestamps.length >= RATE_LIMIT_MAX){
+      return false;
+    }
+    timestamps.push(now);
+    try{ localStorage.setItem(RATE_LIMIT_KEY, JSON.stringify(timestamps)); } catch(e){ /* ignore */ }
+    return true;
+  }
+
   document.getElementById('btnSubmitReport').addEventListener('click', function(){
     var firstName = document.getElementById('reportFirstName').value.trim();
     var lastName = document.getElementById('reportLastName').value.trim();
@@ -612,6 +636,10 @@
     if(!firstName || !lastName){ err.textContent = 'Merci d\'indiquer votre prénom et votre nom.'; return; }
     if(!selectedQty){ err.textContent = 'Merci d\'indiquer une quantité estimée.'; return; }
     if(!pendingCoords){ err.textContent = 'Position manquante, réessayez.'; return; }
+    if(!checkRateLimit()){
+      err.textContent = 'Trop de signalements envoyés récemment depuis cet appareil. Merci de patienter quelques minutes avant d\'en envoyer un nouveau.';
+      return;
+    }
 
     var refNumber = generateRefNumber();
     var report = {
