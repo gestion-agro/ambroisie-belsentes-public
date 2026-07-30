@@ -118,12 +118,13 @@
 
 <div id="topbar">
   <div class="title">🌿 Signaler l'ambroisie</div>
-  <div class="subtitle">Commune de Belsentes · v2026-07-29-g</div>
+  <div class="subtitle">Commune de Belsentes · v2026-07-29-h</div>
 </div>
 
 <div id="legend">
   <div><span class="dot" style="background:var(--amber)"></span> Signalé, en cours d'examen</div>
   <div><span class="dot" style="background:var(--line)"></span> Confirmé par la mairie</div>
+  <div><span class="dot" style="background:#2f6b3a;opacity:0.75;"></span> Déjà signalé (mairie)</div>
   <div><span class="dot" style="background:#1c6fd9"></span> Votre position</div>
   <div><span style="display:inline-block;width:16px;height:0;border-top:2px dashed #1a1a1a;"></span> Limite communale</div>
 </div>
@@ -502,6 +503,48 @@
       });
   }
 
+  // ================= SIGNALEMENTS OFFICIELS (lecture seule) =================
+  // Affichés pour que les habitants voient les zones déjà signalées et
+  // évitent de signaler deux fois le même endroit. Aucune info personnelle
+  // du conseiller n'est affichée, juste l'emplacement et le statut général.
+  var officialMarkersLayer = L.layerGroup().addTo(map);
+  var officialReports = [];
+
+  function officialIcon(){
+    return L.divIcon({
+      className: '',
+      html: '<div style="width:20px;height:20px;border-radius:50%;background:#2f6b3a;border:2px solid #fff;box-shadow:1px 2px 3px rgba(0,0,0,.4);opacity:0.75;"></div>',
+      iconSize: [20,20],
+      iconAnchor: [10,10]
+    });
+  }
+
+  function renderOfficialMarkers(){
+    officialMarkersLayer.clearLayers();
+    officialReports.forEach(function(s){
+      // La route /public-signalements exclut déjà les signalements erronés
+      // côté serveur, mais on vérifie aussi ici par sécurité.
+      if(s.isErreur) return;
+      var m = L.marker([s.lat, s.lon], { icon: officialIcon() });
+      var label = s.traite ? 'Traité' : 'En cours de traitement';
+      m.bindPopup('<b>Déjà signalé</b><br>Ce secteur a déjà été signalé et pris en compte par la mairie.<br><i>' + label + '</i>');
+      m.addTo(officialMarkersLayer);
+    });
+  }
+
+  function loadOfficialReports(){
+    // Route dédiée et allégée : uniquement position + statut, aucune donnée
+    // personnelle ni contenu sensible n'est jamais exposé publiquement ici.
+    var url = CONFIG.WORKER_URL.replace('/citizen', '/public-signalements');
+    fetch(url, { method:'GET', headers:{ 'X-App-Secret': CONFIG.CITIZEN_SECRET } })
+      .then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function(data){
+        officialReports = data.items || [];
+        renderOfficialMarkers();
+      })
+      .catch(function(e){ console.warn('Erreur chargement signalements officiels', e); });
+  }
+
   // ================= PLACEMENT SUR LA CARTE =================
   var placing = false;
   var pendingCoords = null;
@@ -697,9 +740,11 @@
 
   // ---- Boot ----
   loadReports();
+  loadOfficialReports();
   loadCommuneBoundary();
   startGps();
   setInterval(function(){ loadReports(true); }, 30000);
+  setInterval(loadOfficialReports, 30000);
 
 })();
 </script>
